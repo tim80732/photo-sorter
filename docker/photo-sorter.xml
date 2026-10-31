@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>photo-sorter</Name>
+  <Repository>ghcr.io/tim80732/photo-sorter:latest</Repository>
+  <Registry>https://github.com/tim80732/photo-sorter/pkgs/container/photo-sorter</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/tim80732/photo-sorter/issues</Support>
+  <Project>https://github.com/tim80732/photo-sorter</Project>
+  <Overview>Photo Sorter: sorts camera files from to-sort folders into yyyymm/JPG|RAW|MOV by capture date, with a dry-run preview you approve first. Built with AI (Claude).</Overview>
+  <Category>MediaApp:Photos Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8095]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/tim80732/photo-sorter/main/docker/photo-sorter.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/tim80732/photo-sorter/main/winres/icon.png</Icon>
+  <ExtraParams>--user 99:100</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="WebUI port" Target="8095" Default="8095" Mode="tcp" Description="LAN only. Don't forward this port on the router." Type="Port" Display="always" Required="true" Mask="false">8095</Config>
+  <Config Name="Camera photos" Target="/camera-photo" Default="/mnt/user/photos/camera-photo" Mode="rw" Description="One path holding both your to-sort folders and the archives, so a move is an instant rename instead of a copy." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/photos/camera-photo</Config>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/photo-sorter/config" Mode="rw" Description="Profiles, settings and history." Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/photo-sorter/config</Config>
+</Container>

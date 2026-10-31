@@ -1,0 +1,59 @@
+# Pushing a tag like v1.0.0 builds PhotoSorter.exe for the release page and
+# pushes the Docker image to ghcr.io/tim80732/photo-sorter (:1.0.0 and :latest).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release
+  packages: write # push the image
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          LD="-s -w -X photosorter/internal/server.Version=$VERSION"
+          go vet ./...
+          go install github.com/tc-hib/go-winres@latest
+          # Icon, version info and the DPI-aware manifest for the exe
+          go-winres make --in winres/winres.json --out rsrc --file-version "$VERSION" --product-version "$VERSION"
+          mkdir -p dist/linux
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$LD -H windowsgui" -o dist/PhotoSorter.exe .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LD" -o dist/linux/photosorter .
+          cp docker/Dockerfile dist/linux/
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: dist/linux
+          push: true
+          tags: |
+            ghcr.io/tim80732/photo-sorter:${{ env.VERSION }}
+            ghcr.io/tim80732/photo-sorter:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/tim80732/photo-sorter
+            org.opencontainers.image.description=Sorts camera files into yyyymm/JPG|RAW|MOV by capture date, with a dry-run preview. Built with AI (Claude).
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ env.VERSION }}
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/PhotoSorter.exe
+          generate_release_notes: true
