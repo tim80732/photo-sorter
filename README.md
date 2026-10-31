@@ -17,19 +17,19 @@ One program, two ways to run it:
 
 **Windows:** download `PhotoSorter.exe` from the [latest release](https://github.com/tim80732/photo-sorter/releases/latest) and run it. It isn't code-signed, so SmartScreen may ask you to confirm the first time.
 
-**Unraid:** on the Docker tab, click **Add Container**, then paste this into **Template**:
+**Unraid:**
 
-```
-https://raw.githubusercontent.com/tim80732/photo-sorter/main/docker/photo-sorter.xml
-```
+1. In a terminal on the server, download the template:
 
-Or from a terminal:
+   ```bash
+   wget -O /boot/config/plugins/dockerMan/templates-user/my-photo-sorter.xml https://raw.githubusercontent.com/tim80732/photo-sorter/main/docker/photo-sorter.xml
+   ```
 
-```bash
-wget -O /boot/config/plugins/dockerMan/templates-user/my-photo-sorter.xml https://raw.githubusercontent.com/tim80732/photo-sorter/main/docker/photo-sorter.xml
-```
+2. Docker tab → **Add Container** → pick **photo-sorter** from the template list.
+3. Set **Camera photos** to the share that holds both your to-sort folders and your archive.
+4. Apply, then open the WebUI.
 
-Set **Camera photos** to the share that holds both your to-sort folders and your archive. Updates show up on the Docker tab like any other container.
+The template is kept on the flash drive, so it survives reboots. Updates show up on the Docker tab like any other container.
 
 **Any Docker host:**
 
