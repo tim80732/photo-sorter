@@ -21,7 +21,13 @@ type ProgressSnapshot struct {
 	SourceTotal int            `json:"sourceTotal"`
 	Counts      map[string]int `json:"counts"`
 	Workers     int            `json:"workers"` // files copied at the same time
-	Active      []string       `json:"active"`  // file each worker is on
+	Active      []ActiveFile   `json:"active"`  // file each worker is on
+}
+
+// ActiveFile is a file being copied, or checked once its copy is written.
+type ActiveFile struct {
+	Rel      string `json:"rel"`
+	Checking bool   `json:"checking"`
 }
 
 func NewProgress() *Progress { return &Progress{s: ProgressSnapshot{Counts: map[string]int{}}} }
@@ -36,7 +42,7 @@ func (p *Progress) Snapshot() ProgressSnapshot {
 	}
 	s.Active = nil
 	for _, a := range p.s.Active {
-		if a != "" {
+		if a.Rel != "" {
 			s.Active = append(s.Active, a)
 		}
 	}

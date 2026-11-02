@@ -53,6 +53,7 @@ type Summary struct {
 	CopiedBytes int64     `json:"copiedBytes"` // bytes actually written (renames excluded), for speed
 	Elapsed     float64   `json:"elapsed"`     // seconds spent sorting (a stop and continue counts only the running time)
 	Workers     int       `json:"workers"`     // files copied at the same time
+	Check       string    `json:"check"`       // "disk" (read back from the disk) or "quick"; empty before the setting existed
 	Cancelled   bool      `json:"cancelled"`
 	Folders     []string  `json:"folders"` // folders created
 }
@@ -88,6 +89,10 @@ func Run(ctx context.Context, p *Plan, prog *Progress) (Summary, []Result) {
 	r := &runner{ctx: ctx, p: p, root: root, prog: prog, months: map[string]bool{}, cross: map[int]bool{}}
 	r.sum.Started = time.Now()
 	r.sum.Workers = Workers(p.Options)
+	r.sum.Check = "disk"
+	if p.Options.QuickCheck {
+		r.sum.Check = "quick"
+	}
 	first := p.runs == 0
 	p.runs++
 
@@ -112,7 +117,7 @@ func Run(ctx context.Context, p *Plan, prog *Progress) (Summary, []Result) {
 	prog.update(func(s *ProgressSnapshot) {
 		s.Done, s.BytesDone = done, doneBytes
 		s.BytesTotal, s.Sources, s.Workers = total, len(p.Options.Sources), r.sum.Workers
-		s.Active = make([]string, r.sum.Workers)
+		s.Active = make([]ActiveFile, r.sum.Workers)
 	})
 	// Files the preview already settled are recorded too, so History and
 	// Leftovers can say what this job did with every file it saw.
@@ -192,7 +197,7 @@ func (r *runner) runTask(t task, slot int) []string {
 		}
 		r.prog.update(func(s *ProgressSnapshot) {
 			if slot < len(s.Active) {
-				s.Active[slot] = it.Rel
+				s.Active[slot] = ActiveFile{Rel: it.Rel}
 			}
 			s.Current = it.Rel
 		})
@@ -200,6 +205,12 @@ func (r *runner) runTask(t task, slot int) []string {
 		status, rel, err := r.one(it, dest, func(n int64) {
 			counted += n
 			r.prog.update(func(s *ProgressSnapshot) { s.BytesDone += n })
+		}, func() {
+			r.prog.update(func(s *ProgressSnapshot) {
+				if slot < len(s.Active) {
+					s.Active[slot].Checking = true
+				}
+			})
 		})
 		r.add(it, rel, status, err)
 		r.mu.Lock()
@@ -222,7 +233,7 @@ func (r *runner) runTask(t task, slot int) []string {
 	}
 	r.prog.update(func(s *ProgressSnapshot) {
 		if slot < len(s.Active) {
-			s.Active[slot] = ""
+			s.Active[slot] = ActiveFile{}
 		}
 	})
 	return moved
@@ -325,8 +336,8 @@ func sidecarDest(sc, photo *Item, photoFinal string) string {
 
 // one sorts a single file. It returns the status, the final relative path,
 // and an error for failures (or a warning with StCopied). onBytes reports
-// copy progress.
-func (r *runner) one(it *Item, destRel string, onBytes func(int64)) (string, string, error) {
+// copy progress; onCheck is called when the copy starts being checked.
+func (r *runner) one(it *Item, destRel string, onBytes func(int64), onCheck func()) (string, string, error) {
 	info, err := os.Stat(it.Src)
 	if err != nil {
 		return StFailed, "", fmt.Errorf("the original is gone: %v", err)
@@ -368,7 +379,7 @@ func (r *runner) one(it *Item, destRel string, onBytes func(int64)) (string, str
 		// Anything else (permissions, unsupported rename): fall back to copying.
 	}
 
-	tmp, err := copyToTemp(it.Src, dir, info, r.p.Options.Move, onBytes)
+	tmp, err := copyToTemp(it.Src, dir, info, r.p.Options.Move, !r.p.Options.QuickCheck, onBytes, onCheck)
 	if err != nil {
 		return StFailed, "", err
 	}
@@ -442,6 +453,10 @@ func checksumFile(path string) (uint64, error) {
 		return 0, err
 	}
 	defer f.Close()
+	return checksumReader(f)
+}
+
+func checksumReader(f io.Reader) (uint64, error) {
 	b := bufPool.Get().(*[]byte)
 	defer bufPool.Put(b)
 	var h maphash.Hash
@@ -453,9 +468,12 @@ func checksumFile(path string) (uint64, error) {
 }
 
 // copyToTemp copies src into a hidden temp file in dir, then reads the copy
-// back and compares checksums. With durable set (moves, where the original
-// is deleted next) the copy is flushed to the disk before it's checked.
-func copyToTemp(src, dir string, info os.FileInfo, durable bool, onBytes func(int64)) (string, error) {
+// back and compares checksums. With diskCheck the copy is flushed to the
+// disk and read back from the disk itself (checksumFromDisk), so a drive
+// that stored it wrongly is caught too; otherwise the read-back usually
+// comes from the system's memory. Moves (durable: the original is deleted
+// next) are always flushed to the disk before they're checked.
+func copyToTemp(src, dir string, info os.FileInfo, durable, diskCheck bool, onBytes func(int64), onCheck func()) (string, error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return "", err
@@ -474,7 +492,7 @@ func copyToTemp(src, dir string, info os.FileInfo, durable bool, onBytes func(in
 	if err == nil {
 		err = out.Truncate(n) // in case the source shrank under us
 	}
-	if err == nil && durable {
+	if err == nil && (durable || diskCheck) {
 		err = out.Sync()
 	}
 	if cerr := out.Close(); err == nil {
@@ -487,9 +505,22 @@ func copyToTemp(src, dir string, info os.FileInfo, durable bool, onBytes func(in
 		os.Remove(tmp)
 		return "", err
 	}
-	got, err := checksumFile(tmp)
-	if err != nil || got != want {
+	onCheck()
+	var got uint64
+	if diskCheck {
+		got, err = checksumFromDisk(tmp)
+	} else {
+		got, err = checksumFile(tmp)
+	}
+	if err != nil {
 		os.Remove(tmp)
+		return "", fmt.Errorf("couldn't read the copy back to check it, so it was removed and the original was kept: %v", err)
+	}
+	if got != want {
+		os.Remove(tmp)
+		if diskCheck {
+			return "", errors.New("the copy read back from the disk didn't match the original. The bad copy was removed and the original was kept. Run the job again to retry it; if it keeps failing, the destination drive may be faulty")
+		}
 		return "", errors.New("the copy didn't match the original (verify failed); the original was kept")
 	}
 	if err := copyTimes(tmp, info); err != nil {

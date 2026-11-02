@@ -85,11 +85,12 @@ func cmdPlan(args []string) int {
 	noRAW := fs.Bool("no-raw", false, "skip RAW")
 	noMOV := fs.Bool("no-mov", false, "skip videos")
 	parallel := fs.Int("parallel", 0, "files copied at once (0 = auto)")
+	quick := fs.Bool("quick-check", false, "check copies in memory instead of reading them back from the disk")
 	run := fs.Bool("run", false, "carry out the plan after building it")
 	out := fs.String("out", "", "write JSON here (default stdout)")
 	only := fs.String("only", "", "text file listing the files to include, relative to the source (for benchmarks)")
 	fs.Parse(args)
-	opt := sorter.Options{Sources: srcs, Dest: *dest, Move: *move, JPG: !*noJPG, RAW: !*noRAW, MOV: !*noMOV, Rename: !*noRename, Sidecars: !*noSide, Parallel: *parallel}
+	opt := sorter.Options{Sources: srcs, Dest: *dest, Move: *move, JPG: !*noJPG, RAW: !*noRAW, MOV: !*noMOV, Rename: !*noRename, Sidecars: !*noSide, Parallel: *parallel, QuickCheck: *quick}
 	if *only != "" {
 		b, err := os.ReadFile(*only)
 		if err != nil {

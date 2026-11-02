@@ -63,12 +63,14 @@ The web UI has no login: keep it on your LAN and don't forward the port.
   Files with no metadata fall back to a date in the file name, then the file's modified time. The preview lists every fallback.
 - **Names:** with *Add the capture date-time* on, `DSCF0001.RAF` becomes `DSCF0001-20260328-164549.RAF`. Names that already contain their date are left alone.
 - **Duplicates:** a file whose identical copy (same size, then SHA-256) is already in that month folder is skipped and left where it is. A *different* file with a taken name gets `_1`, `_2`… Nothing is ever overwritten.
-- **Copy:** each file is written to a hidden temp file and read back. Only when the hash matches is it renamed into place. Created and modified times are kept.
+- **Copy:** each file is written to a hidden temp file, saved to the disk, and read back from the disk itself: Windows reads it with its file cache bypassed, Linux drops it from the page cache first. Only when the checksum matches is it renamed into place, so a drive that stored the data wrongly is caught too. Created and modified times are kept.
+  - *Quick check* (a per-profile setting) skips the disk round trip and compares the copy as the system still holds it in memory. It's faster, and catches read and copy errors but not a bad write.
+  - On a network share or an Unraid user share (`/mnt/user`), the server may still answer the read-back from its own memory.
 - **Move:** on the same disk it's a rename (instant, data untouched). From another disk it's copy → verify → delete the original. Moves force the copy onto the disk (`fsync`) before the original is deleted.
 - **Speed:**
   - Several files are copied at once, and each copy reads ahead while it writes.
-  - *Auto* picks 4 at once for SSDs, SD cards and network drives, and 1 when a spinning hard disk is involved. On Unraid it picks 2, because of the parity array. Profiles can override this.
-  - Copies are verified with a fast 64-bit checksum. SHA-256 is only used to decide that two files are identical.
+  - *Auto* picks 4 at once for SSDs, SD cards and network drives, and 1 when a spinning hard disk is involved. With the disk check on and only local flash involved it picks 8, because each file waits for its read-back. On Unraid it picks 2, because of the parity array. Profiles can override this.
+  - Copies are checked with a fast 64-bit checksum, worked out while reading the original, so only the read-back costs time. SHA-256 is only used to decide that two files are identical.
   - The Windows app shows progress on its taskbar icon, like Explorer: green, or red if a file failed. The icon flashes when a sort finishes in the background.
   - Benchmark: `.\test\bench.ps1 -Src <folder>` compares Photo Sorter with Windows' copy and robocopy.
 - **Sidecars:** `.xmp`, `.pp3` and `.dop` files go next to their photo, preferring the RAW, and are renamed to match.

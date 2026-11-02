@@ -27,6 +27,9 @@ type Options struct {
 	Rename   bool     `json:"rename"`   // add -yyyymmdd-HHMMSS to file names
 	Sidecars bool     `json:"sidecars"` // bring .xmp/.pp3/.dop along with their photo
 	Parallel int      `json:"parallel"` // files copied at once; 0 = automatic
+	// QuickCheck compares each copy as the system still holds it in memory,
+	// instead of reading it back from the disk (the default).
+	QuickCheck bool `json:"quickCheck"`
 	// Folders that are never removed when emptied (profile to-sort folders).
 	Protected []string `json:"-"`
 	// Only, if set, limits the scan to these paths (lower-case, relative to

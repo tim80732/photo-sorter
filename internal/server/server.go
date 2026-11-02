@@ -74,6 +74,7 @@ type job struct {
 	Sources   []string        `json:"sources"`
 	Dest      string          `json:"dest"`
 	Move      bool            `json:"move"`
+	Quick     bool            `json:"quickCheck"`
 	Started   time.Time       `json:"started"`
 
 	ended   bool            // a stopped sort that won't be continued
@@ -402,7 +403,7 @@ func (s *Server) startJob(kind, purpose string, opt sorter.Options, profile stri
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j := &job{ID: strconv.FormatInt(time.Now().UnixNano(), 36), Kind: kind, Purpose: purpose, Profile: profile,
-		Sources: opt.Sources, Dest: opt.Dest, Move: opt.Move, Started: time.Now(), prog: sorter.NewProgress()}
+		Sources: opt.Sources, Dest: opt.Dest, Move: opt.Move, Quick: opt.QuickCheck, Started: time.Now(), prog: sorter.NewProgress()}
 	s.jobs[j.ID] = j
 	s.launch(j, fn)
 	return j, nil

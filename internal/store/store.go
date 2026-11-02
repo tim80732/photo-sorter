@@ -16,22 +16,23 @@ import (
 )
 
 type Profile struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Source   string `json:"source"` // the profile's to-sort folder (optional on Windows)
-	Dest     string `json:"dest"`
-	Move     bool   `json:"move"`
-	JPG      bool   `json:"jpg"`
-	RAW      bool   `json:"raw"`
-	MOV      bool   `json:"mov"`
-	Rename   bool   `json:"rename"`
-	Sidecars bool   `json:"sidecars"`
-	Parallel int    `json:"parallel"` // files copied at once; 0 = automatic
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Source     string `json:"source"` // the profile's to-sort folder (optional on Windows)
+	Dest       string `json:"dest"`
+	Move       bool   `json:"move"`
+	JPG        bool   `json:"jpg"`
+	RAW        bool   `json:"raw"`
+	MOV        bool   `json:"mov"`
+	Rename     bool   `json:"rename"`
+	Sidecars   bool   `json:"sidecars"`
+	Parallel   int    `json:"parallel"`   // files copied at once; 0 = automatic
+	QuickCheck bool   `json:"quickCheck"` // check copies in memory, not read back from the disk
 }
 
 // Options turns a profile into import options for the given sources.
 func (p Profile) Options(sources []string) sorter.Options {
-	return sorter.Options{Sources: sources, Dest: p.Dest, Move: p.Move, JPG: p.JPG, RAW: p.RAW, MOV: p.MOV, Rename: p.Rename, Sidecars: p.Sidecars, Parallel: p.Parallel}
+	return sorter.Options{Sources: sources, Dest: p.Dest, Move: p.Move, JPG: p.JPG, RAW: p.RAW, MOV: p.MOV, Rename: p.Rename, Sidecars: p.Sidecars, Parallel: p.Parallel, QuickCheck: p.QuickCheck}
 }
 
 // Settings remembers the last manual import.

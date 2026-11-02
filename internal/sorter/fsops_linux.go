@@ -37,6 +37,21 @@ func copyTimes(dst string, src os.FileInfo) error {
 	return os.Chtimes(dst, src.ModTime(), src.ModTime())
 }
 
+// checksumFromDisk drops the file from the page cache, then reads it, so the
+// data comes from the disk. The copy was flushed (fsync) first, so its cached
+// pages are clean and can be dropped. Through a FUSE share (Unraid's
+// /mnt/user) this drops only the FUSE layer's copy; the share may still
+// answer from its own cache.
+func checksumFromDisk(path string) (uint64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_DONTNEED)
+	return checksumReader(f)
+}
+
 // Unraid shares expect rw for everyone (files 666, folders 777), whatever
 // the container's umask is.
 func finishNewFile(p string) { os.Chmod(p, 0o666) }

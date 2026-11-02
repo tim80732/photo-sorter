@@ -331,7 +331,23 @@ function optionsForm(o) {
         [["0", "Auto (recommended)"], ["1", "One file at a time"], ["2", "2 files at once"], ["4", "4 files at once"], ["8", "8 files at once"]]
           .map(([v, l]) => h("option", { value: v, selected: String(o.parallel || 0) === v }, l))),
       h("div", { class: "faint", style: "font-size:12.5px;margin-top:4px" }, "Auto copies several files at once from SSDs, SD cards and network drives, and one at a time when a spinning hard disk is involved, where parallel copies would slow it down.")),
+    h("div", { class: "lbl" }, "Check"), h("div", {},
+      h("select", { onchange: e => (o.quickCheck = e.target.value === "quick") },
+        [["disk", "Read back from the disk (recommended)"], ["quick", "Quick check (faster)"]]
+          .map(([v, l]) => h("option", { value: v, selected: (o.quickCheck ? "quick" : "disk") === v }, l))),
+      h("div", { class: "faint", style: "font-size:12.5px;margin-top:4px" }, "Each copy is saved to the disk, then read back from the disk itself and compared with the original, byte for byte. This catches a copy the drive stored wrongly, not only a bad read. It adds about a quarter to the time on SSDs and SD cards, and up to double on a spinning hard disk."),
+      h("div", { class: "faint", style: "font-size:12.5px;margin-top:4px" }, "Quick check compares the copy as Windows or Linux still holds it in memory: it catches read and copy errors, but not a drive that stores the data wrongly."),
+      h("div", { class: "faint", style: "font-size:12.5px;margin-top:4px" }, "A move within the same disk is a rename, so no data is rewritten and there's nothing to check.")),
   ];
+}
+
+// settingsLine sums up a profile's or a job's options in one line. A job
+// passes the check its summary recorded; jobs from before the Check setting
+// recorded none, so it's left out.
+function settingsLine(o, check = o.quickCheck ? "quick" : "disk") {
+  return [o.move ? "Move" : "Copy", [o.jpg && "JPG", o.raw && "RAW", o.mov && "MOV"].filter(Boolean).join(", "),
+    o.rename ? "date-time added to names" : "names kept", o.sidecars ? "sidecars included" : "no sidecars",
+    o.parallel ? o.parallel + " at once" : "auto speed", check && (check === "quick" ? "quick check" : "disk check")].filter(Boolean).join(" · ");
 }
 
 function folderField(value, onChange, placeholder) {
@@ -524,8 +540,7 @@ async function pageImport(q) {
     h("div", { class: "lbl" }, "Destination"),
     profile ? h("div", { class: "mono", style: "padding-top:6px" }, profile.dest) : folderField(o.dest, v => (o.dest = v), "Archive folder"),
     h("div", { class: "lbl" }, "Layout"), h("div", { class: "mono muted", style: "padding-top:6px" }, "<destination>\\yyyymm\\JPG | RAW | MOV"),
-    ...(profile ? [h("div", { class: "lbl" }, "Settings"), h("div", { style: "padding-top:6px" },
-      `${profile.move ? "Move" : "Copy"} · ${[profile.jpg && "JPG", profile.raw && "RAW", profile.mov && "MOV"].filter(Boolean).join(", ")} · ${profile.rename ? "date-time added to names" : "names kept"} · ${profile.sidecars ? "sidecars included" : "no sidecars"} · ${profile.parallel ? profile.parallel + " at once" : "auto speed"}  `,
+    ...(profile ? [h("div", { class: "lbl" }, "Settings"), h("div", { style: "padding-top:6px" }, settingsLine(profile) + "  ",
       h("a", { href: "#/profiles/" + profile.id }, "Edit profile"))] : optionsForm(o)));
   setPage("new",
     h("h1", {}, profile ? profile.name : "Manual import"),
@@ -799,12 +814,14 @@ function pageRun(id) {
     bar.parentElement.classList.toggle("paused", !sorting);
     srcLine.textContent = sorting && p.sources > 1 ? `Source ${p.source + 1} of ${p.sources}: ${num(p.sourceDone)} of ${num(p.sourceTotal)} files` : "";
     const active = sorting ? (p.active || []) : [];
-    cur.replaceChildren(...(active.length ? [h("div", { class: "faint", style: "font-family:inherit" }, p.workers > 1 ? `${j.move ? "Moving" : "Copying"} ${num(active.length)} of up to ${num(p.workers)} files at once:` : (j.move ? "Moving:" : "Copying:")), ...active.map(a => h("div", { style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, a))] : []));
+    cur.replaceChildren(...(active.length ? [h("div", { class: "faint", style: "font-family:inherit" }, p.workers > 1 ? `${j.move ? "Moving" : "Copying"} ${num(active.length)} of up to ${num(p.workers)} files at once:` : (j.move ? "Moving:" : "Copying:")),
+      ...active.map(a => h("div", { style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" },
+        h("span", { class: "pill" + (a.checking ? " accent" : ""), style: "display:inline-block;min-width:68px;text-align:center;margin-right:8px;font-family:inherit" }, a.checking ? "checking" : j.move ? "moving" : "copying"), a.rel))] : []));
     counts.replaceChildren(metric(j.move ? "Moved" : "Copied", num(sorted)), metric("Remaining", num(remaining)),
       metric("Duplicates", num(c.duplicate || 0)), metric("Failed", num(c.failed || 0)));
     if (sorting) {
       title.textContent = stopping ? "Stopping…" : j.move ? "Moving" : "Copying";
-      sub.textContent = stopping ? "Finishing the files in progress, then stopping." : "Each file is checked byte-for-byte. You can leave this page; the job carries on.";
+      sub.textContent = stopping ? "Finishing the files in progress, then stopping." : (j.quickCheck ? "Each file is checked byte-for-byte." : "Each file is saved, then read back from the disk and compared.") + " You can leave this page; the job carries on.";
     } else if (j.stage === "stopped") {
       title.textContent = "Stopped";
       sub.textContent = `${num(sorted)} of ${num(p.total)} files ${verb}. The other ${num(remaining)} are still in the source, untouched.`;
@@ -841,6 +858,7 @@ async function showSummary(j, title, sub, btns, below) {
   const n = (s.copied || 0) + (s.moved || 0);
   sub.replaceChildren(`${num(n)} files ${j.move ? "moved" : "copied"} (${bytes(s.bytes)})`,
     avgSpeed(s) ? ` in ${duration(s)} · average ${avgSpeed(s)}` : "",
+    s.check === "disk" && s.copiedBytes ? " · all read back from the disk and matched" : "",
     s.notRun ? ` · ${num(s.notRun)} not ${j.move ? "moved" : "copied"}, still in the source` : "",
     j.historyId ? h("span", {}, " · ", h("a", { href: "#/history/" + j.historyId }, "Details")) : "",
     j.profile === "Manual import" ? h("span", {}, " · ", h("a", { href: "#", onclick: async e => {
@@ -848,9 +866,9 @@ async function showSummary(j, title, sub, btns, below) {
       const entry = await api("GET", "/api/history/" + j.historyId).catch(x => toast(x.message));
       if (entry) saveAsProfile(entry.options);
     } }, "Save as profile")) : "");
-  btns.replaceChildren(
-    INFO.canOpen ? h("button", { onclick: () => api("POST", "/api/open", { path: j.dest }).catch(e => toast(e.message)) }, "Open destination") : null,
-    h("button", { class: "primary", onclick: () => (location.hash = "#/jobs") }, "Close"));
+  btns.replaceChildren(...[
+    INFO.canOpen && h("button", { onclick: () => api("POST", "/api/open", { path: j.dest }).catch(e => toast(e.message)) }, "Open destination"),
+    h("button", { class: "primary", onclick: () => (location.hash = "#/jobs") }, "Close")].filter(Boolean));
   const kids = [];
   if (j.error) kids.push(errBox(j.error));
   if (s.failed && j.historyId) {
@@ -870,7 +888,7 @@ async function saveAsProfile(o) {
     [{ label: "Cancel", value: false }, { label: "Save", value: true, cls: "primary" }]);
   if (!v) return;
   try {
-    await api("POST", "/api/profiles", { name: name.value, dest: o.dest, move: o.move, jpg: o.jpg, raw: o.raw, mov: o.mov, rename: o.rename, sidecars: o.sidecars });
+    await api("POST", "/api/profiles", { name: name.value, dest: o.dest, move: o.move, jpg: o.jpg, raw: o.raw, mov: o.mov, rename: o.rename, sidecars: o.sidecars, parallel: o.parallel, quickCheck: o.quickCheck });
     toast("Profile saved");
   } catch (e) { toast(e.message, 6000); }
 }
@@ -1087,7 +1105,8 @@ async function pageHistoryEntry(id) {
   }
   const s = e.summary;
   setPage("history", h("div", { class: "row" }, h("h1", {}, e.profile + " — " + new Date(s.started).toLocaleString()), stagePill(sortStatus(s))),
-    h("p", { class: "sub mono" }, e.options.sources.join(", ") + "  →  " + e.options.dest),
+    h("p", { class: "sub mono", style: "margin-bottom:4px" }, e.options.sources.join(", ") + "  →  " + e.options.dest),
+    h("p", { class: "sub" }, settingsLine(e.options, s.check || null)),
     h("div", { class: "metrics" }, metric(e.options.move ? "Moved" : "Copied", num(s.copied + s.moved), bytes(s.bytes)), metric("Duplicates", num(s.duplicates), "skipped"),
       metric("Renamed", num(s.renamed), "name taken"), metric("Failed", num(s.failed), "originals kept")),
     h("div", { style: "height:14px" }), chips, h("div", { style: "height:8px" }), t.el,

@@ -7,7 +7,7 @@ func Workers(o Options) int {
 	if o.Parallel > 0 {
 		return min(o.Parallel, 16)
 	}
-	return autoWorkers(append([]string{o.Dest}, o.Sources...))
+	return autoWorkers(append([]string{o.Dest}, o.Sources...), !o.QuickCheck)
 }
 
 // Speed describes what Auto picks for these folders, for the UI.

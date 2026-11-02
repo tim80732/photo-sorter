@@ -95,6 +95,7 @@ Write-Host "Copy"
 $srcCount = (Get-ChildItem -Recurse "$Work\card", $card2 -File).Count
 $r2 = Plan @("$Work\card", $card2) $dest @("--run")
 Check ($r2.summary.failed -eq 0) "no failures ($($r2.summary.copied) copied)"
+Check ($r2.summary.check -eq 'disk') "copies are read back from the disk by default"
 Check ((Get-ChildItem -Recurse "$Work\card", $card2 -File).Count -eq $srcCount) "copy leaves sources alone"
 Check (Test-Path "$dest\202310\RAW\101A2290-20231001-180130.CR3") "CR3 is in place"
 Check ((Get-FileHash "$dest\202310\RAW\101A2290-20231001-180130.CR3").Hash -eq (Get-FileHash "$card2\101A2290.CR3").Hash) "copy is byte-identical"
@@ -130,6 +131,12 @@ Check (Test-Path $mv) "the to-sort folder itself is kept"
 Write-Host "Keep names"
 $r5 = Plan @($card2) "$Work\archive3" @("--no-rename")
 Check ((Item $r5 '101A2290.CR3').dest -eq '202310/RAW/101A2290.CR3') "--no-rename keeps the camera name"
+
+# ---- 6. quick check ----
+Write-Host "Quick check"
+$r6 = Plan @($card2) "$Work\archive4" @("--quick-check", "--run")
+Check ($r6.summary.failed -eq 0 -and $r6.summary.copied -gt 0 -and $r6.summary.check -eq 'quick') "--quick-check copies $($r6.summary.copied) and records the quick check"
+Check ((Get-FileHash "$Work\archive4\202310\RAW\101A2290-20231001-180130.CR3").Hash -eq (Get-FileHash "$card2\101A2290.CR3").Hash) "quick-checked copy is byte-identical"
 
 Write-Host ""
 if ($fails) { Write-Host "$fails check(s) failed" -ForegroundColor Red; exit 1 }

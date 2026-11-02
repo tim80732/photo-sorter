@@ -3,9 +3,12 @@
 package sorter
 
 import (
+	"hash/maphash"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -66,6 +69,44 @@ func copyTimes(dst string, src os.FileInfo) error {
 	a := windows.Filetime(d.LastAccessTime)
 	w := windows.Filetime(d.LastWriteTime)
 	return windows.SetFileTime(h, &c, &a, &w)
+}
+
+// Unbuffered reads need a buffer aligned to the disk's sector size (4 KB
+// covers every common disk), so these are cut from a slightly larger one.
+var alignedPool = sync.Pool{New: func() any {
+	b := make([]byte, chunkSize+4096)
+	off := (4096 - int(uintptr(unsafe.Pointer(&b[0]))&4095)) & 4095
+	b = b[off : off+chunkSize]
+	return &b
+}}
+
+// checksumFromDisk reads the file with the Windows file cache bypassed
+// (FILE_FLAG_NO_BUFFERING), so the data comes from the disk itself.
+func checksumFromDisk(path string) (uint64, error) {
+	p, err := windows.UTF16PtrFromString(longPath(path))
+	if err != nil {
+		return 0, err
+	}
+	h, err := windows.CreateFile(p, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING,
+		windows.FILE_FLAG_NO_BUFFERING|windows.FILE_FLAG_SEQUENTIAL_SCAN, 0)
+	if err != nil {
+		return 0, err
+	}
+	defer windows.CloseHandle(h)
+	b := alignedPool.Get().(*[]byte)
+	defer alignedPool.Put(b)
+	var sum maphash.Hash
+	sum.SetSeed(checkSeed)
+	for {
+		var n uint32
+		if err := windows.ReadFile(h, *b, &n, nil); err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			return sum.Sum64(), nil
+		}
+		sum.Write((*b)[:n])
+	}
 }
 
 func finishNewFile(string) {}
