@@ -4,6 +4,8 @@ package sorter
 
 import (
 	"errors"
+	"hash/maphash"
+	"io"
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -37,19 +39,36 @@ func copyTimes(dst string, src os.FileInfo) error {
 	return os.Chtimes(dst, src.ModTime(), src.ModTime())
 }
 
-// checksumFromDisk drops the file from the page cache, then reads it, so the
-// data comes from the disk. The copy was flushed (fsync) first, so its cached
-// pages are clean and can be dropped. Through a FUSE share (Unraid's
-// /mnt/user) this drops only the FUSE layer's copy; the share may still
-// answer from its own cache.
+// checksumFromDisk reads the file with the page cache bypassed (O_DIRECT),
+// so the data comes from the disk. Unraid's /mnt/user shares pass O_DIRECT
+// on to the pool or array disk underneath. File systems that refuse it
+// (tmpfs) get the copy dropped from the page cache and read normally; the
+// copy was flushed (fsync) first, so its cached pages are clean.
 func checksumFromDisk(path string) (uint64, error) {
-	f, err := os.Open(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|unix.O_DIRECT, 0)
 	if err != nil {
-		return 0, err
+		if f, err = os.Open(path); err != nil {
+			return 0, err
+		}
+		defer f.Close()
+		unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_DONTNEED)
+		return checksumReader(f)
 	}
 	defer f.Close()
-	unix.Fadvise(int(f.Fd()), 0, 0, unix.FADV_DONTNEED)
-	return checksumReader(f)
+	b := alignedPool.Get().(*[]byte)
+	defer alignedPool.Put(b)
+	var sum maphash.Hash
+	sum.SetSeed(checkSeed)
+	for {
+		n, err := f.Read(*b)
+		sum.Write((*b)[:n])
+		if err == io.EOF {
+			return sum.Sum64(), nil
+		}
+		if err != nil {
+			return 0, err
+		}
+	}
 }
 
 // Unraid shares expect rw for everyone (files 666, folders 777), whatever

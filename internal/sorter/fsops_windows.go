@@ -6,9 +6,7 @@ import (
 	"hash/maphash"
 	"os"
 	"strings"
-	"sync"
 	"syscall"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -70,15 +68,6 @@ func copyTimes(dst string, src os.FileInfo) error {
 	w := windows.Filetime(d.LastWriteTime)
 	return windows.SetFileTime(h, &c, &a, &w)
 }
-
-// Unbuffered reads need a buffer aligned to the disk's sector size (4 KB
-// covers every common disk), so these are cut from a slightly larger one.
-var alignedPool = sync.Pool{New: func() any {
-	b := make([]byte, chunkSize+4096)
-	off := (4096 - int(uintptr(unsafe.Pointer(&b[0]))&4095)) & 4095
-	b = b[off : off+chunkSize]
-	return &b
-}}
 
 // checksumFromDisk reads the file with the Windows file cache bypassed
 // (FILE_FLAG_NO_BUFFERING), so the data comes from the disk itself.

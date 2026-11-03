@@ -539,7 +539,7 @@ async function pageImport(q) {
     h("div", { class: "lbl" }, "Sources"), sourcesEditor(o.sources, () => {}),
     h("div", { class: "lbl" }, "Destination"),
     profile ? h("div", { class: "mono", style: "padding-top:6px" }, profile.dest) : folderField(o.dest, v => (o.dest = v), "Archive folder"),
-    h("div", { class: "lbl" }, "Layout"), h("div", { class: "mono muted", style: "padding-top:6px" }, "<destination>\\yyyymm\\JPG | RAW | MOV"),
+    h("div", { class: "lbl" }, "Layout"), h("div", { class: "mono muted", style: "padding-top:6px" }, disp("<destination>/yyyymm/JPG | RAW | MOV")),
     ...(profile ? [h("div", { class: "lbl" }, "Settings"), h("div", { style: "padding-top:6px" }, settingsLine(profile) + "  ",
       h("a", { href: "#/profiles/" + profile.id }, "Edit profile"))] : optionsForm(o)));
   setPage("new",
@@ -678,13 +678,13 @@ async function pagePreview(id) {
   const treeRows = [];
   for (const m of p.tree) {
     treeRows.push(h("div", { class: "m", "data-sel": m.month, onclick: () => { treeSel = treeSel === m.month ? null : m.month; filter = "all"; refresh(); } },
-      h("span", { class: "name" }, "📁 " + m.month + "\\"),
+      h("span", { class: "name" }, "📁 " + disp(m.month + "/")),
       h("span", {}, m.exists ? h("span", { class: "pill" }, "exists") : h("span", { class: "pill accent" }, "new")),
       h("span", { class: "muted" }, `${plural(m.files, "file")} · ${bytes(m.bytes)}`)));
     for (const c of m.cats) {
       const sel = m.month + "/" + c.dir;
       treeRows.push(h("div", { class: "c", "data-sel": sel, onclick: () => { treeSel = treeSel === sel ? null : sel; filter = "all"; refresh(); } },
-        h("span", {}, c.dir + "\\"),
+        h("span", {}, disp(c.dir + "/")),
         h("span", {}, c.exists ? "" : h("span", { class: "pill accent" }, "new")),
         h("span", { class: "muted" }, c.files ? `${plural(c.files, "file")} · ${bytes(c.bytes)}` : (c.exists ? "nothing new" : "empty folder"),
           c.dups ? ` · ${num(c.dups)} already there` : "")));

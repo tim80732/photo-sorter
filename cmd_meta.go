@@ -23,11 +23,16 @@ func cmdMeta(w io.Writer, args []string) int {
 	}
 	for _, a := range args {
 		filepath.WalkDir(a, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "skipped:", err)
+				return nil
+			}
+			if d.IsDir() {
 				return nil
 			}
 			st, err := d.Info()
 			if err != nil {
+				fmt.Fprintln(os.Stderr, "skipped:", err)
 				return nil
 			}
 			r := meta.Read(p, st.ModTime())

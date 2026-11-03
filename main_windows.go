@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	webview2 "github.com/jchv/go-webview2"
@@ -49,21 +50,23 @@ func runDefault() {
 	var hwnd uintptr
 	host := server.Host{Open: openExplorer, Roots: drives, LocalOnly: true}
 	host.PickFolder = func(start string) (string, error) { return pickFolder(hwnd, start) }
+	quit := make(chan struct{})
 	if w == nil {
-		host.Quit = func() { os.Exit(0) }
+		host.Quit = sync.OnceFunc(func() { close(quit) })
 	}
 	srv := server.New(st, host)
 	go http.Serve(ln, srv.Handler())
 
 	if w == nil {
 		exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-		select {} // runs until Quit in the page
+		<-quit // runs until Quit in the page
+	} else {
+		hwnd = uintptr(w.Window())
+		watchTaskbar(hwnd, srv.Status)
+		w.Navigate(url)
+		w.Run()
+		w.Destroy()
 	}
-	hwnd = uintptr(w.Window())
-	watchTaskbar(hwnd, srv.Status)
-	w.Navigate(url)
-	w.Run()
-	w.Destroy()
 	// Closed mid-sort: stop after the current file so no half copy is left.
 	srv.StopAndWait(60 * time.Second)
 }

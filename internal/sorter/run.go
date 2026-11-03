@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 )
 
 var (
@@ -441,6 +442,16 @@ func (r *runner) place(from, dir, name string, sum *[32]byte, sidecar bool) (str
 const chunkSize = 4 << 20
 
 var bufPool = sync.Pool{New: func() any { b := make([]byte, chunkSize); return &b }}
+
+// Reads that bypass the system cache need a buffer aligned to the disk's
+// sector size (4 KB covers every common disk), so these are cut from a
+// slightly larger one.
+var alignedPool = sync.Pool{New: func() any {
+	b := make([]byte, chunkSize+4096)
+	off := (4096 - int(uintptr(unsafe.Pointer(&b[0]))&4095)) & 4095
+	b = b[off : off+chunkSize]
+	return &b
+}}
 
 // Copies are verified with a fast 64-bit checksum (maphash, ~12 GB/s per
 // core): any copy error changes it. Deciding that two files are the same
