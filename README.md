@@ -15,7 +15,7 @@ One program, two ways to run it:
 
 ## Install
 
-**Windows:** download `PhotoSorter.exe` from the [latest release](https://github.com/tim80732/photo-sorter/releases/latest) and run it. It isn't code-signed, so SmartScreen may ask you to confirm the first time.
+**Windows:** download `PhotoSorter.exe` from the [latest release](https://github.com/tim80732/photo-sorter/releases/latest) and run it. It isn't code-signed, so the first time Windows may show "Windows protected your PC". Click **More info → Run anyway**, or before running it, right-click the file → **Properties** → tick **Unblock** → OK. In PowerShell: `Unblock-File .\PhotoSorter.exe`. Its SHA-256 is listed on the release page if you want to check the download.
 
 **Unraid:**
 
