@@ -67,6 +67,7 @@ The web UI has no login: keep it on your LAN and don't forward the port.
   - *Quick check* (a per-profile setting) skips the disk round trip and compares the copy as the system still holds it in memory. It's faster, and catches read and copy errors but not a bad write.
   - On an Unraid user share (`/mnt/user`) the read-back reaches the pool or array disk underneath. There the share layer is the slowest part either way, so the disk check costs about the same as the quick check. On a network share opened from Windows, the server may still answer the read-back from its own memory.
 - **Move:** on the same disk it's a rename (instant, data untouched). From another disk it's copy → verify → delete the original. Moves force the copy onto the disk (`fsync`) before the original is deleted.
+- **Free space:** the preview shows how much the sort needs and how much is free on the destination, and warns when under 20 GB would be left. A sort that doesn't fit can't be approved. A same-disk move needs no space. On Unraid the free space is the share's: cache and array together.
 - **Speed:**
   - Several files are copied at once, and each copy reads ahead while it writes.
   - *Auto* picks 4 at once for SSDs, SD cards and network drives, and 1 when a spinning hard disk is involved. With the disk check on and only local flash involved it picks 8, because each file waits for its read-back. On Unraid it picks 2, because of the parity array. Profiles can override this.
@@ -78,6 +79,7 @@ The web UI has no login: keep it on your LAN and don't forward the port.
   - camera/system files: `.CTG .THM .LRV .XML`, AVCHD index files, `.DS_Store`, `._*`
   - unknown types
 - **Leftovers page:** what's still in a profile's to-sort folder after sorting (duplicates, system files and so on), so you can delete it. Empty card folders (`DCIM\100_FUJI`) are removed after a Move; the profile's own folder is always kept.
+- **Log:** the Docker app logs each scan and sort, every file a sort failed on, and every file deleted from the Leftovers page (`docker logs photo-sorter`).
 
 ## Build from source
 

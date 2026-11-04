@@ -727,6 +727,22 @@ async function pagePreview(id) {
     return;
   }
 
+  // Free space on the destination. A sort that doesn't fit can't be approved;
+  // under 20 GB left afterwards gets a warning.
+  const sp = p.space, fits = !sp || sp.needed <= sp.free;
+  let spaceRow = null;
+  if (sp && sp.needed === 0) {
+    spaceRow = h("div", {}, h("div", {}, h("strong", {}, "No extra space needed"), ` · ${bytes(sp.free)} free`),
+      h("div", { class: "faint", style: "font-size:12px" }, "Same disk, so files are renamed into place, not copied."));
+  } else if (sp) {
+    const left = sp.free - sp.needed, tight = fits && left < 20e9;
+    spaceRow = h("div", {}, h("div", {}, h("strong", {}, bytes(sp.needed)), ` needed · ${bytes(sp.free)} free`),
+      h("div", { class: "bar thin" + (fits ? (tight ? " warn" : "") : " full"), style: "max-width:360px;margin:6px 0 4px" },
+        h("div", { style: `width:${Math.min(100, sp.free ? sp.needed / sp.free * 100 : 100).toFixed(1)}%` })),
+      fits ? h("div", { class: tight ? "warn-text" : "faint", style: "font-size:12px" },
+        tight ? `Only ${bytes(left)} left after this ${verb}.` : `${bytes(left)} left after this ${verb}`) : null);
+  }
+
   setPage("jobs",
     h("div", { class: "spread" }, h("div", {}, h("h1", {}, "Preview — " + p.profile),
       h("p", { class: "sub" }, "Dry run: nothing has been written. Check it, then approve.")),
@@ -735,7 +751,9 @@ async function pagePreview(id) {
       h("div", { class: "form", style: "grid-template-columns:110px minmax(0,1fr);gap:4px 12px" },
         h("div", { class: "muted" }, multi ? "Sources" : "Source"), h("div", { class: "mono" }, o.sources.map((s, i) => h("div", {}, (multi ? i + 1 + ". " : "") + s))),
         h("div", { class: "muted" }, "Destination"), h("div", { class: "mono" }, o.dest),
+        spaceRow && h("div", { class: "muted" }, "Space"), spaceRow,
         h("div", { class: "muted" }, "Speed"), h("div", {}, `${plural(p.workers, "file")} at a time (${p.workersWhy})`)),
+      fits ? null : h("div", { class: "error" }, "Not enough space"),
       h("div", { class: "metrics" },
         metric("To " + verb, num(toSort.length), bytes(totalBytes)),
         metric("Duplicates", num(dups.length), "already there, not " + (o.move ? "moved" : "copied")),
@@ -746,11 +764,14 @@ async function pagePreview(id) {
     h("h2", {}, "Folders"),
     h("div", { class: "card" }, h("div", { class: "faint", style: "font-size:12.5px;margin-bottom:6px" }, "Every month folder gets JPG, RAW and MOV. Click a folder to list its files."), tree),
     filesHead, chips, h("div", { style: "height:8px" }), tableBox,
-    h("div", { class: "sticky-foot spread" },
-      h("button", { onclick: back }, "← Back to settings"),
-      h("div", { class: "row" },
-        h("button", { onclick: () => discardPlan(id) }, "Discard"),
-        approve)));
+    fits
+      ? h("div", { class: "sticky-foot spread" },
+        h("button", { onclick: back }, "← Back to settings"),
+        h("div", { class: "row" },
+          h("button", { onclick: () => discardPlan(id) }, "Discard"),
+          approve))
+      : h("div", { class: "sticky-foot row", style: "justify-content:flex-end" },
+        h("button", { class: "primary", onclick: back }, "← Back to settings")));
   refresh();
 }
 

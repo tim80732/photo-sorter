@@ -159,6 +159,9 @@ label { cursor: pointer; }
 .bar.thin { height: 6px; }
 .bar > div { height: 100%; background: var(--accent); transition: width .3s; }
 .bar.paused > div { background: var(--faint); }
+.bar.warn > div { background: var(--warn-text); }
+.bar.full > div { background: var(--danger); }
+.warn-text { color: var(--warn-text); }
 /* action bar: pinned to the bottom of the window, spanning the content area */
 .sticky-foot { position: sticky; bottom: 0; z-index: 2; margin: 18px calc(-1 * var(--main-x)) 0; padding: 12px var(--main-x) 14px;
   background: var(--bg); border-top: 1px solid var(--border); }

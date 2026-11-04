@@ -71,6 +71,28 @@ func checksumFromDisk(path string) (uint64, error) {
 	}
 }
 
+func freeSpace(dir string) (uint64, error) {
+	var st unix.Statfs_t
+	if err := unix.Statfs(dir, &st); err != nil {
+		return 0, err
+	}
+	return st.Bavail * uint64(st.Bsize), nil
+}
+
+// sameDisk reports whether a file can be renamed from a to b: same mount,
+// not just the same file system (in Docker, two volumes from one disk are
+// different mounts, and a rename between them fails).
+func sameDisk(a, b string) bool {
+	var x, y unix.Statx_t
+	if unix.Statx(unix.AT_FDCWD, a, 0, unix.STATX_MNT_ID, &x) != nil || unix.Statx(unix.AT_FDCWD, b, 0, unix.STATX_MNT_ID, &y) != nil {
+		return false
+	}
+	if x.Mask&y.Mask&unix.STATX_MNT_ID != 0 {
+		return x.Mnt_id == y.Mnt_id
+	}
+	return x.Dev_major == y.Dev_major && x.Dev_minor == y.Dev_minor
+}
+
 // Unraid shares expect rw for everyone (files 666, folders 777), whatever
 // the container's umask is.
 func finishNewFile(p string) { os.Chmod(p, 0o666) }

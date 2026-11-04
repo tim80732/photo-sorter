@@ -4,7 +4,6 @@ package main
 
 import (
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,7 +54,7 @@ func runDefault() {
 		host.Quit = sync.OnceFunc(func() { close(quit) })
 	}
 	srv := server.New(st, host)
-	go http.Serve(ln, srv.Handler())
+	go srv.HTTPServer().Serve(ln)
 
 	if w == nil {
 		exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()

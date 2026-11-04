@@ -10,11 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -81,6 +83,13 @@ type job struct {
 	results []sorter.Result // a sort's results so far, across continues
 	prog    *sorter.Progress
 	cancel  context.CancelFunc
+}
+
+// HTTPServer wraps the handler with timeouts that drop clients that never
+// finish sending a request. There's no write timeout: a big preview or CSV
+// on a slow link may take a while.
+func (s *Server) HTTPServer() *http.Server {
+	return &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 }
 
 func New(st *store.Store, host Host) *Server {
@@ -405,6 +414,7 @@ func (s *Server) startJob(kind, purpose string, opt sorter.Options, profile stri
 	j := &job{ID: strconv.FormatInt(time.Now().UnixNano(), 36), Kind: kind, Purpose: purpose, Profile: profile,
 		Sources: opt.Sources, Dest: opt.Dest, Move: opt.Move, Quick: opt.QuickCheck, Started: time.Now(), prog: sorter.NewProgress()}
 	s.jobs[j.ID] = j
+	logJob(j, "started")
 	s.launch(j, fn)
 	return j, nil
 }
@@ -417,6 +427,7 @@ func (s *Server) launch(j *job, fn func(ctx context.Context, j *job)) {
 	go func() {
 		defer func() {
 			if v := recover(); v != nil {
+				log.Printf("%s %s: internal error: %v\n%s", j.Kind, j.Profile, v, debug.Stack())
 				s.mu.Lock()
 				j.Error = fmt.Sprint("internal error: ", v)
 				j.Done = true
@@ -430,6 +441,21 @@ func (s *Server) launch(j *job, fn func(ctx context.Context, j *job)) {
 		cancel()
 	}()
 }
+
+// The log (docker logs on Unraid) records each job and every file a job
+// failed on or deleted, so a sort nobody was watching can be checked later.
+func logJob(j *job, what string) {
+	kind := map[string]string{"run": "sort"}[j.Kind]
+	if kind == "" {
+		kind = j.Kind
+	}
+	if what == "started" {
+		what += fmt.Sprintf(" (%s -> %s)", strings.Join(j.Sources, ", "), j.Dest)
+	}
+	log.Printf("%s: %s %s", j.Profile, kind, what)
+}
+
+func gb(n int64) string { return fmt.Sprintf("%.1f GB", float64(n)/1e9) }
 
 type scanReq struct {
 	Options   sorter.Options `json:"options"`
@@ -478,11 +504,15 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			if ctx.Err() != nil {
 				j.Error = "Scan cancelled"
+				logJob(j, "cancelled")
 			} else {
 				j.Error = err.Error()
+				logJob(j, "failed: "+j.Error)
 			}
 			return
 		}
+		n, b := plan.ToCopy()
+		logJob(j, fmt.Sprintf("finished: %d files to sort (%s)", n, gb(b)))
 		s.plans[plan.ID] = &planEntry{plan: plan, profile: name, purpose: purpose, deleted: map[int]bool{}}
 		// Import previews stay until they're sorted or discarded. Leftovers
 		// scans, and scans that found nothing to copy, are dropped oldest
@@ -596,6 +626,7 @@ func (s *Server) continueJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	logJob(j, "continued")
 	s.launch(j, s.sortFn(s.plans[j.PlanID]))
 	writeJSON(w, r, s.jobJSON(j))
 }
@@ -618,6 +649,16 @@ func (s *Server) endJob(w http.ResponseWriter, r *http.Request) {
 func (s *Server) sortFn(e *planEntry) func(ctx context.Context, j *job) {
 	return func(ctx context.Context, j *job) {
 		sum, results := sorter.Run(ctx, e.plan, j.prog)
+		for _, res := range results {
+			if res.Status == sorter.StFailed {
+				log.Printf("  failed: %s: %s", res.Src, res.Error)
+			}
+		}
+		what := "finished"
+		if sum.Cancelled {
+			what = "stopped"
+		}
+		logJob(j, fmt.Sprintf("%s: %d copied, %d moved (%s), %d duplicates, %d failed, %d not done", what, sum.Copied, sum.Moved, gb(sum.Bytes), sum.Duplicates, sum.Failed, sum.NotRun))
 		s.mu.Lock()
 		total := mergeSummary(j.Summary, sum)
 		j.results = mergeResults(j.results, results)
@@ -632,6 +673,7 @@ func (s *Server) sortFn(e *planEntry) func(ctx context.Context, j *job) {
 		j.Summary = &total
 		if err != nil {
 			j.Error = "Sorted, but the history couldn't be saved: " + err.Error()
+			log.Print(j.Error)
 		}
 		// A finished plan is spent; forget it so it can't be run twice. A
 		// stopped one is kept so the sort can be continued.
@@ -740,11 +782,17 @@ func (s *Server) getPlan(w http.ResponseWriter, r *http.Request) {
 		items = append(items, o)
 	}
 	workers, why := sorter.Speed(e.plan.Options)
-	writeJSON(w, r, map[string]any{
+	out := map[string]any{
 		"id": e.plan.ID, "created": e.plan.Created, "options": e.plan.Options,
 		"profile": e.profile, "purpose": e.purpose, "tree": e.plan.Tree, "items": items,
 		"workers": workers, "workersWhy": why,
-	})
+	}
+	if e.purpose != "leftovers" {
+		if sp, ok := sorter.SpaceFor(e.plan); ok {
+			out["space"] = sp
+		}
+	}
+	writeJSON(w, r, out)
 }
 
 func (s *Server) planCSV(w http.ResponseWriter, r *http.Request) {
@@ -768,6 +816,11 @@ func (s *Server) runPlan(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.plan(r.PathValue("id"))
 	if !ok {
 		fail(w, 404, "This preview has expired. Scan again.")
+		return
+	}
+	if sp, ok := sorter.SpaceFor(e.plan); ok && !sp.Fits() {
+		log.Printf("%s: sort refused: not enough space (needs %s, %s free on %s)", e.profile, gb(sp.Needed), gb(int64(sp.Free)), e.plan.Options.Dest)
+		fail(w, 409, "Not enough space")
 		return
 	}
 	// Two sorts of the same folder at once would fight over its files.
@@ -864,6 +917,9 @@ func (s *Server) deleteItems(w http.ResponseWriter, r *http.Request) {
 	for _, d := range res {
 		if d.OK {
 			e.deleted[d.ID] = true
+			log.Printf("deleted: %s", d.Src)
+		} else {
+			log.Printf("couldn't delete: %s: %s", d.Src, d.Error)
 		}
 	}
 	s.mu.Unlock()

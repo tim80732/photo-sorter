@@ -98,6 +98,34 @@ func checksumFromDisk(path string) (uint64, error) {
 	}
 }
 
+func freeSpace(dir string) (uint64, error) {
+	p, err := windows.UTF16PtrFromString(longPath(dir))
+	if err != nil {
+		return 0, err
+	}
+	var avail, total, free uint64
+	err = windows.GetDiskFreeSpaceEx(p, &avail, &total, &free)
+	return avail, err
+}
+
+// sameDisk reports whether a file can be renamed from a to b: both on one
+// drive or one network share.
+func sameDisk(a, b string) bool {
+	vol := func(p string) string {
+		in, err := windows.UTF16PtrFromString(longPath(p))
+		if err != nil {
+			return ""
+		}
+		buf := make([]uint16, 1024)
+		if windows.GetVolumePathName(in, &buf[0], uint32(len(buf))) != nil {
+			return ""
+		}
+		return windows.UTF16ToString(buf)
+	}
+	va, vb := vol(a), vol(b)
+	return va != "" && strings.EqualFold(va, vb)
+}
+
 func finishNewFile(string) {}
 
 func mkdirShared(p string) error { return os.Mkdir(p, 0o777) }

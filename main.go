@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
@@ -59,7 +58,9 @@ func cmdServe(args []string) int {
 	}
 	srv := server.New(st, server.Host{Roots: func() []string { return rootList }})
 	fmt.Printf("Photo Sorter %s listening on %s (config %s)\n", server.Version, *listen, *config)
-	if err := http.ListenAndServe(*listen, srv.Handler()); err != nil {
+	hs := srv.HTTPServer()
+	hs.Addr = *listen
+	if err := hs.ListenAndServe(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
