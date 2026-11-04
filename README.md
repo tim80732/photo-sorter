@@ -2,6 +2,7 @@
 
 Sorts camera files into `<destination>\yyyymm\JPG|RAW|MOV`, by the date each photo or video was taken.
 Nothing is copied or moved until you have seen the dry-run preview and clicked **Approve**.
+What's new: [CHANGELOG.md](CHANGELOG.md).
 
 > **Built by AI.** The code, tests and docs in this repository were written by Claude (Anthropic's AI model), directed and tested by [@tim80732](https://github.com/tim80732). It's used on real photo libraries, but review it yourself before trusting it with files you can't replace, and keep backups.
 
@@ -93,7 +94,7 @@ Needs Go (`winget install GoLang.Go`). From this folder in PowerShell:
 
 `build.ps1 -Version 1.1.0` sets the version shown in the app.
 
-Releases are built by GitHub Actions: pushing a tag like `v1.0.0` builds `PhotoSorter.exe` for the release page and pushes the Docker image to `ghcr.io/tim80732/photo-sorter` (`:1.0.0` and `:latest`).
+Releases are built by GitHub Actions: pushing a tag like `v1.0.0` builds `PhotoSorter.exe` for the release page and pushes the Docker image to `ghcr.io/tim80732/photo-sorter` (`:1.0.0` and `:latest`). Add the version's section to [CHANGELOG.md](CHANGELOG.md) first: it becomes the release notes, and the build stops if it's missing.
 
 ## License
 
