@@ -4,7 +4,7 @@ What changed in each release. Downloads are on the
 [Releases page](https://github.com/tim80732/photo-sorter/releases); the Docker
 image is `ghcr.io/tim80732/photo-sorter`.
 
-## Unreleased
+## 1.3.0 — 2026-11-06
 
 ### Added
 - **Rename** tab: tidies a folder that's already an archive, in place. Pick
