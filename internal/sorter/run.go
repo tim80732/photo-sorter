@@ -346,13 +346,20 @@ func (r *runner) one(it *Item, destRel string, onBytes func(int64), onCheck func
 	if info.Size() != it.Size {
 		return StFailed, "", errors.New("the original changed since the preview; scan again")
 	}
-	if err := r.ensureMonth(strings.SplitN(destRel, "/", 2)[0]); err != nil {
-		return StFailed, "", err
-	}
 	dirRel := pathDir(destRel)
 	dir := filepath.Join(r.root, filepath.FromSlash(dirRel))
-	if err := os.MkdirAll(dir, 0o777); err != nil {
-		return StFailed, "", err
+	if r.p.Options.Tidy {
+		// A rename creates only the folders it puts files in.
+		if err := mkdirAllShared(dir); err != nil {
+			return StFailed, "", err
+		}
+	} else {
+		if err := r.ensureMonth(strings.SplitN(destRel, "/", 2)[0]); err != nil {
+			return StFailed, "", err
+		}
+		if err := os.MkdirAll(dir, 0o777); err != nil {
+			return StFailed, "", err
+		}
 	}
 	name := pathBase(destRel)
 	sidecar := it.Parent >= 0
@@ -645,6 +652,23 @@ func (r *runner) ensureMonth(month string) error {
 		}
 	}
 	r.months[month] = true
+	return nil
+}
+
+// mkdirAllShared is os.MkdirAll with every new folder writable by everyone
+// on the share, like the month folders an import creates.
+func mkdirAllShared(dir string) error {
+	if st, err := os.Stat(dir); err == nil && st.IsDir() {
+		return nil
+	}
+	if parent := filepath.Dir(dir); parent != dir {
+		if err := mkdirAllShared(parent); err != nil {
+			return err
+		}
+	}
+	if err := mkdirShared(dir); err != nil && !os.IsExist(err) {
+		return err
+	}
 	return nil
 }
 

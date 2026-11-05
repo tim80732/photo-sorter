@@ -77,6 +77,7 @@ type job struct {
 	Dest      string          `json:"dest"`
 	Move      bool            `json:"move"`
 	Quick     bool            `json:"quickCheck"`
+	Tidy      bool            `json:"tidy,omitempty"` // a Rename job
 	Started   time.Time       `json:"started"`
 
 	ended   bool            // a stopped sort that won't be continued
@@ -412,7 +413,7 @@ func (s *Server) startJob(kind, purpose string, opt sorter.Options, profile stri
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j := &job{ID: strconv.FormatInt(time.Now().UnixNano(), 36), Kind: kind, Purpose: purpose, Profile: profile,
-		Sources: opt.Sources, Dest: opt.Dest, Move: opt.Move, Quick: opt.QuickCheck, Started: time.Now(), prog: sorter.NewProgress()}
+		Sources: opt.Sources, Dest: opt.Dest, Move: opt.Move, Quick: opt.QuickCheck, Tidy: opt.Tidy, Started: time.Now(), prog: sorter.NewProgress()}
 	s.jobs[j.ID] = j
 	logJob(j, "started")
 	s.launch(j, fn)
@@ -460,7 +461,7 @@ func gb(n int64) string { return fmt.Sprintf("%.1f GB", float64(n)/1e9) }
 type scanReq struct {
 	Options   sorter.Options `json:"options"`
 	ProfileID string         `json:"profileId"`
-	Purpose   string         `json:"purpose"` // "import" or "leftovers"
+	Purpose   string         `json:"purpose"` // "import", "rename" or "leftovers"
 }
 
 func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
@@ -470,8 +471,13 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	opt := req.Options
+	opt.Tidy = req.Purpose == "rename"
 	name := "Manual import"
-	if req.ProfileID != "" {
+	if opt.Tidy {
+		// Rename tidies one folder in place; profiles don't apply.
+		name = "Rename"
+		opt.Sources = []string{opt.Dest}
+	} else if req.ProfileID != "" {
 		p, ok := s.st.Profile(req.ProfileID)
 		if !ok {
 			fail(w, 404, "profile not found")
@@ -483,7 +489,7 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 			srcs = []string{p.Source}
 		}
 		opt = p.Options(srcs)
-	} else if req.Purpose != "leftovers" {
+	} else if req.Purpose == "import" || req.Purpose == "" {
 		st := s.st.Settings()
 		st.Last = opt
 		s.st.SaveSettings(st)
@@ -598,7 +604,7 @@ func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	var js []*job
 	for _, j := range s.jobs {
-		if j.Purpose == "import" && active(s.stage(j)) {
+		if j.Purpose != "leftovers" && active(s.stage(j)) {
 			js = append(js, j)
 		}
 	}
@@ -621,7 +627,7 @@ func (s *Server) continueJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, o := range s.jobs {
-		if o != j && o.Kind == "run" && !o.Done && overlaps(o.Sources, j.Sources) {
+		if o != j && o.Kind == "run" && !o.Done && clashes(o, j.Sources, j.Dest, j.Tidy) {
 			fail(w, 409, "Another job is sorting the same folder. Continue this one when it's finished.")
 			return
 		}
@@ -787,6 +793,9 @@ func (s *Server) getPlan(w http.ResponseWriter, r *http.Request) {
 		"profile": e.profile, "purpose": e.purpose, "tree": e.plan.Tree, "items": items,
 		"workers": workers, "workersWhy": why,
 	}
+	if e.plan.Tidy != nil {
+		out["tidy"] = e.plan.Tidy
+	}
 	if e.purpose != "leftovers" {
 		if sp, ok := sorter.SpaceFor(e.plan); ok {
 			out["space"] = sp
@@ -831,7 +840,7 @@ func (s *Server) runPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, o := range s.jobs {
-		if o.Kind == "run" && !o.Done && overlaps(o.Sources, e.plan.Options.Sources) {
+		if o.Kind == "run" && !o.Done && clashes(o, e.plan.Options.Sources, e.plan.Options.Dest, e.plan.Options.Tidy) {
 			s.mu.Unlock()
 			fail(w, 409, "Another job is sorting the same folder. Approve this one when it's finished.")
 			return
@@ -868,6 +877,17 @@ func (s *Server) discardPlan(w http.ResponseWriter, r *http.Request) {
 		delete(s.plans, id)
 	}
 	writeJSON(w, r, map[string]bool{"ok": true})
+}
+
+// clashes reports whether a running sort o would fight over files with a new
+// one. Two imports clash only on their sources (they may share an archive);
+// a Rename rearranges its whole folder, so it clashes with any job that reads
+// or writes there.
+func clashes(o *job, sources []string, dest string, tidy bool) bool {
+	if !o.Tidy && !tidy {
+		return overlaps(o.Sources, sources)
+	}
+	return overlaps(append(append([]string{}, o.Sources...), o.Dest), append(append([]string{}, sources...), dest))
 }
 
 // overlaps reports whether any folder in a is the same as, inside, or

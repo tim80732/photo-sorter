@@ -30,6 +30,9 @@ type Options struct {
 	// QuickCheck compares each copy as the system still holds it in memory,
 	// instead of reading it back from the disk (the default).
 	QuickCheck bool `json:"quickCheck"`
+	// Tidy is a Rename job: Dest is a parent folder that is sorted in place
+	// (see tidy.go). JPG/RAW/MOV say which types get month folders.
+	Tidy bool `json:"tidy,omitempty"`
 	// Folders that are never removed when emptied (profile to-sort folders).
 	Protected []string `json:"-"`
 	// Only, if set, limits the scan to these paths (lower-case, relative to
@@ -97,6 +100,7 @@ type Plan struct {
 	Options Options   `json:"options"`
 	Items   []*Item   `json:"items"`
 	Tree    []Month   `json:"tree"`
+	Tidy    *TidyInfo `json:"tidy,omitempty"` // Rename jobs only
 
 	runs int // sorts started on it; a stopped sort can be continued
 }
@@ -139,6 +143,9 @@ func newID() string {
 // BuildPlan scans the sources and works out where every file would go.
 // Nothing is written.
 func BuildPlan(ctx context.Context, opt Options, prog *Progress) (*Plan, error) {
+	if opt.Tidy {
+		return buildTidyPlan(ctx, opt, prog)
+	}
 	if strings.TrimSpace(opt.Dest) == "" {
 		return nil, fmt.Errorf("choose a destination folder")
 	}

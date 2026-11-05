@@ -44,10 +44,20 @@ The web UI has no login: keep it on your LAN and don't forward the port.
 
 ## How to use it
 
-1. **New job:** pick source folders (an SD card, or a to-sort folder on the server) and a destination. Or use a **profile**, which remembers both plus your settings.
+1. **Import:** pick source folders (an SD card, or a to-sort folder on the server) and a destination. Or use a **profile**, which remembers both plus your settings.
 2. **Preview:** a dry run lists every folder and file: what will be copied, duplicates already in the archive, names that clash, and files without a capture date. Nothing is written yet.
 3. **Approve:** files are copied (or moved) and each one is verified. Jobs run in the background; **Active jobs** shows them, and a stopped job can be continued.
 4. **Job history** keeps what happened to every file. **Leftovers** shows what's still in a to-sort folder, and which job left it there.
+
+**Rename** tidies a folder that's already an archive, in place. Pick the *parent folder* (the one that holds the month folders) and which file types to sort. Everything under it ends up in `yyyymm/JPG | RAW | MOV` with the capture date-time in its name:
+
+- Stray subfolders (say `JPG/1` and `JPG/2` from a camera whose file counter wrapped) are emptied and removed, and photos in the wrong month go to the right one, which is created if needed.
+- Types you didn't tick go to `<parent>/RAW` or `<parent>/MOV` with their names unchanged. The preview warns about them.
+- Anything that isn't a photo, video or sidecar goes to `<parent>/misc`, keeping its path. Exact duplicates go to `misc/duplicates`. Nothing is deleted or overwritten, and `misc` itself is never sorted.
+- Hidden files and folders (such as `.stfolder`) are left alone, and so are folders that were already empty.
+- The preview shows the folder tree now and after, with the number of files in each folder. Within one disk every change is a rename, so even a big month takes seconds.
+
+Programs that keep their own catalog of file locations (Lightroom, for example) will see renamed files as missing.
 
 ## How it sorts
 

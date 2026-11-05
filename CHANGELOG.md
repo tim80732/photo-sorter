@@ -4,6 +4,20 @@ What changed in each release. Downloads are on the
 [Releases page](https://github.com/tim80732/photo-sorter/releases); the Docker
 image is `ghcr.io/tim80732/photo-sorter`.
 
+## Unreleased
+
+### Added
+- **Rename** tab: tidies a folder that's already an archive, in place. Pick
+  the parent folder and the file types to sort; everything under it goes into
+  `yyyymm/JPG | RAW | MOV` with the capture date-time in its name. Stray
+  subfolders are emptied and removed, photos in the wrong month move to the
+  right one, unticked types go to `<parent>/RAW` or `<parent>/MOV`, and other
+  files (and exact duplicates) go to `<parent>/misc`. The preview shows the
+  folder tree before and after, with file counts.
+
+### Changed
+- *New job* is now called **Import**.
+
 ## 1.2.0 — 2026-11-04
 
 ### Added

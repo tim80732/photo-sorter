@@ -345,6 +345,7 @@ function optionsForm(o) {
 // passes the check its summary recorded; jobs from before the Check setting
 // recorded none, so it's left out.
 function settingsLine(o, check = o.quickCheck ? "quick" : "disk") {
+  if (o.tidy) return ["Rename in place", [o.jpg && "JPG", o.raw && "RAW", o.mov && "MOV"].filter(Boolean).join(", ") + " into month folders"].join(" · ");
   return [o.move ? "Move" : "Copy", [o.jpg && "JPG", o.raw && "RAW", o.mov && "MOV"].filter(Boolean).join(", "),
     o.rename ? "date-time added to names" : "names kept", o.sidecars ? "sidecars included" : "no sidecars",
     o.parallel ? o.parallel + " at once" : "auto speed", check && (check === "quick" ? "quick check" : "disk check")].filter(Boolean).join(" · ");
@@ -379,7 +380,7 @@ function sourcesEditor(list, onChange) {
 async function startScan(body) {
   try {
     const j = await api("POST", "/api/scan", body);
-    location.hash = (j.purpose === "import" ? "#/jobs/" : "#/scan/") + j.id;
+    location.hash = (j.purpose === "leftovers" ? "#/scan/" : "#/jobs/") + j.id;
   } catch (e) { toast(e.message, 6000); }
 }
 
@@ -412,7 +413,7 @@ function pageJobs() {
     let js;
     try { js = await api("GET", "/api/jobs"); } catch (e) { list.replaceChildren(errBox(e)); return; }
     if (!js.length) {
-      list.replaceChildren(h("div", { class: "note" }, "Nothing running. ", h("a", { href: "#/" }, "Start a new job"), "."));
+      list.replaceChildren(h("div", { class: "note" }, "Nothing running. ", h("a", { href: "#/" }, "Start an import"), " or ", h("a", { href: "#/rename" }, "a rename"), "."));
       return;
     }
     list.replaceChildren(h("div", { class: "card jobs" }, js.slice().reverse().map(j => {
@@ -441,7 +442,7 @@ function pageJobs() {
         h("div", { style: "min-width:0" },
           h("div", { class: "row" }, h("span", { class: "name" }, j.profile), stagePill(j.stage, j.stage === "sorting" ? pct + "%" : ""),
             h("span", { class: "faint", style: "font-size:12.5px" }, "started " + new Date(j.started).toLocaleTimeString())),
-          h("div", { class: "mono faint", style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" }, j.sources.join(", ") + "  →  " + j.dest),
+          h("div", { class: "mono faint", style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px" }, j.tidy ? j.dest : j.sources.join(", ") + "  →  " + j.dest),
           pct == null ? null : h("div", { class: "bar thin", style: "margin-top:8px" }, h("div", { style: `width:${pct}%` })),
           h("div", { class: "muted", style: "font-size:13px;margin-top:4px" }, detail)),
         h("div", { class: "row" }, action, h("button", {}, "Open")));
@@ -480,11 +481,11 @@ async function updateJobBadge() {
   b.textContent = text; b.className = cls; b.hidden = !text;
 }
 
-// ---------- New job ----------
+// ---------- Import ----------
 async function pageNewJob() {
   const list = h("div");
   setPage("new",
-    h("h1", {}, "New job"),
+    h("h1", {}, "Import"),
     h("p", { class: "sub" }, "Scan, check the preview, then approve. Nothing is copied or moved before you approve."),
     h("div", { class: "card prow feature" },
       h("div", {}, h("div", { class: "name" }, "Manual import"),
@@ -558,6 +559,110 @@ async function pageImport(q) {
       } }, "Scan and preview")));
 }
 
+// ---------- Rename ----------
+// Tidies a folder that is already an archive, in place: everything under the
+// parent folder goes into month folders. The last choices are remembered in
+// this browser only.
+function pageRename() {
+  let last = {};
+  try { last = JSON.parse(localStorage.getItem("rename") || "{}"); } catch { /* none saved */ }
+  const o = Object.assign({ dest: "", jpg: true, raw: true, mov: true }, last);
+  const err = h("div");
+  const cb = (key, label) => h("label", {}, h("input", { type: "checkbox", checked: !!o[key], onchange: e => (o[key] = e.target.checked) }), " ", label);
+  setPage("rename",
+    h("h1", {}, "Rename"),
+    h("p", { class: "sub" }, "Tidy a folder in place: everything under it is sorted into month folders."),
+    h("div", { class: "card" }, h("div", { class: "form" },
+      h("div", { class: "lbl" }, "Parent folder"), folderField(o.dest, v => (o.dest = v), "The folder that holds the month folders"),
+      h("div", { class: "lbl" }, "Rename file type"), h("div", { class: "row", style: "padding-top:6px;gap:18px" }, cb("jpg", "JPG"), cb("raw", "RAW"), cb("mov", "MOV")))),
+    err,
+    h("div", { class: "spread", style: "margin-top:14px" },
+      h("span", { class: "faint" }, "Nothing changes until you approve the preview."),
+      h("button", { class: "primary", onclick: () => {
+        err.replaceChildren();
+        const msg = !o.dest.trim() ? "Choose a parent folder." : !(o.jpg || o.raw || o.mov) ? "Tick at least one file type." : "";
+        if (msg) return err.replaceChildren(h("div", { class: "error", style: "margin-top:12px" }, msg));
+        try { localStorage.setItem("rename", JSON.stringify(o)); } catch { /* storage blocked */ }
+        startScan({ purpose: "rename", options: { dest: o.dest.trim(), jpg: o.jpg, raw: o.raw, mov: o.mov } });
+      } }, "Scan →")));
+}
+
+// tidyTree draws a Rename preview tree: folders only, each with the number of
+// files directly in it. Months come first, then other folders; inside a month,
+// JPG, RAW, MOV. With colour, each folder directly under the parent is a
+// coloured row (months blue, anything else grey).
+function tidyTree(dirs, rootName, colour) {
+  const kids = {};
+  let rootFiles = 0;
+  for (const d of dirs) {
+    if (d.path === "") { rootFiles = d.files; continue; }
+    const i = d.path.lastIndexOf("/");
+    (kids[i < 0 ? "" : d.path.slice(0, i)] ||= []).push(d);
+  }
+  const isMonth = n => /^\d{6}$/.test(n);
+  const typeOrder = { jpg: "0", raw: "1", mov: "2" };
+  const key = (n, top) => top ? (isMonth(n) ? "0" + n : "1" + n.toLowerCase()) : (typeOrder[n.toLowerCase()] || "3" + n.toLowerCase());
+  const rows = [h("div", { class: "tr root" }, h("span", { class: "nm" }, rootName), h("span", { class: "n" }, num(rootFiles)))];
+  // Folders directly under the parent sit flush left; below them, connector
+  // lines show the hierarchy: ├ / └ for each folder, │ while its parent has
+  // more folders further down. guides holds one entry per level above.
+  const walk = (par, depth, guides) => {
+    const list = (kids[par] || []).map(d => [key(pathBase(d.path), depth === 1), d]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    list.forEach(([, d], i) => {
+      const name = pathBase(d.path), last = i === list.length - 1;
+      const cls = "tr" + (depth === 1 ? " top" + (colour ? (isMonth(name) ? " mon" : " oth") : "") : "");
+      const lines = depth === 1 ? [] : [...guides.map(g => h("span", { class: "g" + (g ? " v" : "") })), h("span", { class: "g " + (last ? "l" : "t") })];
+      rows.push(h("div", { class: cls }, ...lines, h("span", { class: "nm" }, name), h("span", { class: "n" }, num(d.files))));
+      walk(d.path, depth + 1, depth === 1 ? [] : [...guides, !last]);
+    });
+  };
+  walk("", 1, []);
+  return h("div", { class: "ttree" }, rows);
+}
+
+function tidyPreview(p) {
+  const t = p.tidy, o = p.options, id = p.id;
+  const moves = p.items.filter(i => i.action === "copy").length;
+  const rootName = pathBase(o.dest.replace(/\\/g, "/").replace(/\/+$/, "")) || o.dest;
+  const back = async () => { await api("DELETE", "/api/plans/" + id).catch(() => {}); location.hash = "#/rename"; };
+  const unt = ["JPG", "RAW", "MOV"].filter(c => t.unticked && t.unticked[c]).map(c => plural(t.unticked[c], c + " file"));
+  const warn = unt.length ? h("div", { class: "warnbox" }, h("strong", {}, "Warning: "),
+    (unt.length > 1 ? unt.slice(0, -1).join(", ") + " and " + unt[unt.length - 1] : unt[0]) + " won't be renamed and sorted") : null;
+  const download = h("a", { href: `/api/plans/${id}/csv`, download: "", style: "font-size:13px" }, "Download list (CSV)");
+  if (!moves) {
+    setPage("rename", h("h1", {}, "Nothing to rename"),
+      h("p", { class: "sub mono" }, o.dest),
+      h("p", { class: "sub" }, "Everything is already where it belongs. Nothing was changed."),
+      warn, h("div", { class: "trees one" }, h("div", {}, h("h4", {}, "Folders"), tidyTree(t.after, rootName, true))),
+      h("div", { class: "sticky-foot row", style: "justify-content:flex-end" },
+        h("button", { class: "primary", onclick: back }, "Done")));
+    return;
+  }
+  const approve = h("button", { class: "primary", onclick: async () => {
+    approve.disabled = true;
+    try { const j = await api("POST", `/api/plans/${id}/run`); location.hash = "#/jobs/" + j.id; }
+    catch (e) { toast(e.message, 6000); approve.disabled = false; }
+  } }, "Rename " + plural(moves, "file"));
+  setPage("rename",
+    h("div", { class: "spread" }, h("h1", {}, "Preview"), download),
+    h("p", { class: "sub mono" }, o.dest),
+    h("div", { class: "metrics" },
+      metric("Renamed", num(t.renamed)),
+      metric("To another month", num(t.otherMonth)),
+      metric("To misc", num(t.toMisc), t.duplicates ? plural(t.duplicates, "duplicate") : null),
+      metric("Folders removed", num(t.removed))),
+    warn,
+    t.noDate ? h("p", { class: "faint", style: "font-size:12.5px;margin:8px 0 0" }, `${plural(t.noDate, "file")} had no capture date inside, so the date comes from the file name or modified time.`) : null,
+    h("div", { class: "trees" },
+      h("div", {}, h("h4", {}, "Now"), tidyTree(t.before, rootName, false)),
+      h("div", { class: "arrow" }, "→"),
+      h("div", {}, h("h4", {}, "After"), tidyTree(t.after, rootName, true))),
+    h("p", { class: "faint", style: "font-size:12.5px" }, "Numbers are files directly in each folder."),
+    h("div", { class: "sticky-foot spread" },
+      h("button", { onclick: back }, "← Back"),
+      approve));
+}
+
 // ---------- Scan progress ----------
 function pageScan(id) {
   const phase = h("div", { style: "font-weight:600" }, "Starting…");
@@ -578,7 +683,7 @@ function pageScan(id) {
     h("h1", {}, cancelled ? "Scan cancelled" : "Scan failed"),
     h("p", { class: "sub" }, "Nothing was copied, moved or written."),
     cancelled ? null : h("div", { class: "error", style: "margin-bottom:14px" }, msg),
-    h("div", { class: "row" }, h("button", { onclick: () => history.back() }, "Back"), h("a", { class: "btn", href: "#/" }, "New job")));
+    h("div", { class: "row" }, h("button", { onclick: () => history.back() }, "Back"), h("a", { class: "btn", href: "#/" }, "Import")));
   const tick = async () => {
     let j;
     try { j = await api("GET", "/api/jobs/" + id); } catch (e) { stopped(false, e.message); return; }
@@ -608,6 +713,7 @@ async function pagePreview(id) {
   let p;
   try { p = await api("GET", "/api/plans/" + id); } catch (e) { if (here()) setPage("jobs", h("h1", {}, "Preview"), errBox(e)); return; }
   if (!here()) return;
+  if (p.tidy) return tidyPreview(p);
   const items = p.items, o = p.options;
   const toSort = items.filter(i => i.action === "copy");
   const dups = items.filter(i => i.action === "duplicate");
@@ -1146,6 +1252,7 @@ function route() {
   const run = fn => Promise.resolve(fn()).catch(e => setPage("", errBox(e)));
   switch (parts[0]) {
     case "import": return run(() => pageImport(q));
+    case "rename": return run(pageRename);
     case "scan": return run(() => pageScan(parts[1]));
     case "preview": return run(() => pagePreview(parts[1]));
     case "run": return run(() => pageRun(parts[1]));

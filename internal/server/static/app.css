@@ -112,6 +112,29 @@ label { cursor: pointer; }
 .tree .sel { background: var(--accent-bg) !important; color: var(--accent-text); }
 .tree .m .name { font-weight: 600; }
 
+/* rename preview: before and after trees */
+.warnbox { background: var(--warn-bg); color: var(--warn-text); border-radius: var(--radius); padding: 8px 12px; margin-top: 12px; }
+.trees { display: grid; grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr); gap: 6px; align-items: start; margin: 18px 0 8px; }
+.trees.one { grid-template-columns: minmax(0, 1fr); max-width: 560px; }
+.trees h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.trees .arrow { text-align: center; color: var(--faint); padding-top: 60px; font-size: 18px; }
+.ttree { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; font-size: 13.5px; }
+.ttree .tr { display: flex; align-items: stretch; min-height: 27px; padding: 0 10px; border-radius: 6px; }
+.ttree .tr .nm { flex: 1; min-width: 0; display: flex; align-items: center; padding-left: 4px; }
+.ttree .tr.root .nm, .ttree .tr.top .nm { padding-left: 0; }
+.ttree .tr .n { display: flex; align-items: center; margin-left: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* connector lines: │ (v), ├ (t), └ (l) */
+.ttree .g { width: 18px; flex: none; position: relative; }
+.ttree .g.v::before, .ttree .g.t::before, .ttree .g.l::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; border-left: 1px solid var(--border-strong); }
+.ttree .g.l::before { bottom: 50%; }
+.ttree .g.t::after, .ttree .g.l::after { content: ""; position: absolute; left: 6px; right: 2px; top: 50%; border-top: 1px solid var(--border-strong); }
+.ttree .tr.root { font-weight: 600; border-bottom: 1px solid var(--border); border-radius: 0; margin-bottom: 2px; }
+.ttree .tr.top { font-weight: 600; margin-top: 4px; }
+.ttree .tr.mon { background: var(--accent-bg); color: var(--accent-text); }
+.ttree .tr.mon .n { color: var(--accent-text); }
+.ttree .tr.oth { background: var(--panel-2); }
+@media (max-width: 760px) { .trees { grid-template-columns: minmax(0, 1fr); } .trees .arrow { display: none; } }
+
 /* chips */
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip { border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px 12px; font-size: 13px; color: var(--muted); background: var(--panel); cursor: pointer; }
