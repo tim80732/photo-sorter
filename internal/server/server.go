@@ -201,6 +201,10 @@ func (s *Server) saveProfile(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	if err := sorter.CheckPattern(p.Pattern); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
 	p, err := s.st.SaveProfile(p)
 	if err != nil {
 		fail(w, 400, err.Error())
@@ -462,6 +466,11 @@ type scanReq struct {
 	Options   sorter.Options `json:"options"`
 	ProfileID string         `json:"profileId"`
 	Purpose   string         `json:"purpose"` // "import", "rename" or "leftovers"
+	// Names, if set, is this import's file name, instead of the profile's.
+	Names *struct {
+		Rename  bool   `json:"rename"`
+		Pattern string `json:"pattern"`
+	} `json:"names,omitempty"`
 }
 
 func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
@@ -472,6 +481,16 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 	}
 	opt := req.Options
 	opt.Tidy = req.Purpose == "rename"
+	if req.Names != nil {
+		if err := sorter.CheckPattern(req.Names.Pattern); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+	}
+	if err := sorter.CheckPattern(opt.Pattern); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
 	name := "Manual import"
 	if opt.Tidy {
 		// Rename tidies one folder in place; profiles don't apply.
@@ -489,6 +508,9 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 			srcs = []string{p.Source}
 		}
 		opt = p.Options(srcs)
+		if req.Names != nil {
+			opt.Rename, opt.Pattern = req.Names.Rename, req.Names.Pattern
+		}
 	} else if req.Purpose == "import" || req.Purpose == "" {
 		st := s.st.Settings()
 		st.Last = opt

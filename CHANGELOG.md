@@ -4,6 +4,27 @@ What changed in each release. Downloads are on the
 [Releases page](https://github.com/tim80732/photo-sorter/releases); the Docker
 image is `ghcr.io/tim80732/photo-sorter`.
 
+## 1.4.0 — 2026-11-06
+
+### Added
+- **File name pattern.** A *File name* box on the Import and Rename pages
+  sets the new names: any text plus `{Name}`, `{Date}` and `{Time}`, added
+  with buttons, with an example as you type. Leave it empty to keep names.
+  The preview lists every name that changes, old and new. Profiles keep their
+  own default (replacing the *Add the capture date-time* switch), which can
+  be changed for one import; a manual import and Rename remember the last one
+  used. `photosorter plan --pattern` does the same from the command line.
+
+### Changed
+- A name is kept only when it already fits the pattern. A date that's part
+  of a camera's own name (`IMG_20250101_081151.HEIC`, Canon clips) no longer
+  stops a rename.
+
+### Fixed
+- Rename jobs said *Moving* and *moved*; they now say *Renaming* and *renamed*.
+- Rename preview trees count the files in subfolders too, so a parent folder
+  no longer shows 0.
+
 ## 1.3.1 — 2026-11-06
 
 ### Changed

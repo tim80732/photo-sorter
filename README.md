@@ -49,7 +49,7 @@ The web UI has no login: keep it on your LAN and don't forward the port.
 3. **Approve:** files are copied (or moved) and each one is verified. Jobs run in the background; **Active jobs** shows them, and a stopped job can be continued.
 4. **Job history** keeps what happened to every file. **Leftovers** shows what's still in a to-sort folder, and which job left it there.
 
-**Rename** tidies a folder that's already an archive, in place. Pick the *parent folder* (the one that holds the month folders) and which file types to sort. Everything under it ends up in `yyyymm/JPG | RAW | MOV` with the capture date-time in its name:
+**Rename** tidies a folder that's already an archive, in place. Pick the *parent folder* (the one that holds the month folders) and which file types to sort. Everything under it ends up in `yyyymm/JPG | RAW | MOV`, named by the *File name* box (see Names below):
 
 - Stray subfolders (say `JPG/1` and `JPG/2` from a camera whose file counter wrapped) are emptied and removed, and photos in the wrong month go to the right one, which is created if needed.
 - Types you didn't tick go to `<parent>/RAW` or `<parent>/MOV` with their names unchanged. The preview warns about them.
@@ -72,7 +72,10 @@ Programs that keep their own catalog of file locations (Lightroom, for example) 
   3. the video header
 
   Files with no metadata fall back to a date in the file name, then the file's modified time. The preview lists every fallback.
-- **Names:** with *Add the capture date-time* on, `DSCF0001.RAF` becomes `DSCF0001-20260328-164549.RAF`. Names that already contain their date are left alone.
+- **Names:** the *File name* box on the Import and Rename pages sets the new names, with an example as you type. Type any text and add the codes with the buttons: `{Name}` (the current name), `{Date}` (`yyyymmdd`) and `{Time}` (`HHMMSS`). The default `{Name}-{Date}-{Time}` turns `DSCF0001.RAF` into `DSCF0001-20260328-164549.RAF`; `{Date}_{Time}_{Name}` gives `20260328_164549_DSCF0001.RAF`. Leave it empty to keep names. The preview lists every name that changes, old and new.
+  - A name that already fits the pattern (with the photo's own date and time, perhaps with a `_1` added) is left alone, so sorting twice changes nothing. A name in another style isn't recognised: check the list for doubled dates before approving.
+  - Characters Windows doesn't allow in file names (`\ / : * ? " < > |`) are refused. The extension is always the file's own.
+  - A profile keeps its own default, which can be changed for one import on the Import page. A manual import and Rename remember the last one used.
 - **Duplicates:** a file whose identical copy (same size, then SHA-256) is already in that month folder is skipped and left where it is. A *different* file with a taken name gets `_1`, `_2`… Nothing is ever overwritten.
 - **Copy:** each file is written to a hidden temp file, saved to the disk, and read back from the disk itself: both Windows and Linux read it with the system's file cache bypassed. Only when the checksum matches is it renamed into place, so a drive that stored the data wrongly is caught too. Created and modified times are kept.
   - *Quick check* (a per-profile setting) skips the disk round trip and compares the copy as the system still holds it in memory. It's faster, and catches read and copy errors but not a bad write.

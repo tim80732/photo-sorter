@@ -81,6 +81,7 @@ func cmdPlan(args []string) int {
 	dest := fs.String("dest", "", "destination folder")
 	move := fs.Bool("move", false, "move instead of copy")
 	noRename := fs.Bool("no-rename", false, "keep file names as they are")
+	pattern := fs.String("pattern", "", "new file name, e.g. {Name}-{Date}-{Time} (the default)")
 	noSide := fs.Bool("no-sidecars", false, "leave sidecars behind")
 	noJPG := fs.Bool("no-jpg", false, "skip JPG/HEIC")
 	noRAW := fs.Bool("no-raw", false, "skip RAW")
@@ -91,7 +92,7 @@ func cmdPlan(args []string) int {
 	out := fs.String("out", "", "write JSON here (default stdout)")
 	only := fs.String("only", "", "text file listing the files to include, relative to the source (for benchmarks)")
 	fs.Parse(args)
-	opt := sorter.Options{Sources: srcs, Dest: *dest, Move: *move, JPG: !*noJPG, RAW: !*noRAW, MOV: !*noMOV, Rename: !*noRename, Sidecars: !*noSide, Parallel: *parallel, QuickCheck: *quick}
+	opt := sorter.Options{Sources: srcs, Dest: *dest, Move: *move, JPG: !*noJPG, RAW: !*noRAW, MOV: !*noMOV, Rename: !*noRename, Pattern: *pattern, Sidecars: !*noSide, Parallel: *parallel, QuickCheck: *quick}
 	if *only != "" {
 		b, err := os.ReadFile(*only)
 		if err != nil {

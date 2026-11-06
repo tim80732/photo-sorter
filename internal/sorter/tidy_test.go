@@ -44,7 +44,7 @@ func TestTidy(t *testing.T) {
 	write(".stfolder/marker", "", "")
 	os.MkdirAll(filepath.Join(root, "202609", "MOV"), 0o777) // empty folders stay
 
-	opt := Options{Dest: root, Tidy: true, JPG: true, RAW: true}
+	opt := Options{Dest: root, Tidy: true, JPG: true, RAW: true, Rename: true}
 	p, err := BuildPlan(context.Background(), opt, NewProgress())
 	if err != nil {
 		t.Fatal(err)

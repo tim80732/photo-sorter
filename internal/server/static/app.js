@@ -304,8 +304,66 @@ const modeExplain = {
     h("b", {}, "Different disk"), h("span", { class: "muted" }, "e.g. an SD card or another drive. Each file is copied, checked byte-for-byte, and only then deleted from the source. If the check fails, the original stays and shows under Failed.")),
 };
 
-// optionsForm edits {move, jpg, raw, mov, rename, sidecars} in place.
-function optionsForm(o) {
+// ---------- File name pattern ----------
+// A new file name is any text with {Name}, {Date} and {Time} in it (see
+// pattern.go). Empty keeps the names; options store it as rename + pattern.
+const DEFAULT_PATTERN = "{Name}-{Date}-{Time}";
+const patternOf = o => o.rename ? (o.pattern || DEFAULT_PATTERN) : "";
+function badPattern(v) {
+  const m = v.replace(/\{(name|date|time)\}/gi, "").match(/[\\/:*?"<>|\x00-\x1f]/);
+  if (m) return m[0] < " " ? "File names can't contain tabs or control characters." : `File names can't contain ${m[0]}`;
+  return v.length > 200 ? "That's too long for a file name." : "";
+}
+
+// patternField is the text box with buttons that put a code where the cursor
+// is, and an example name below. onChange(value, ok) runs on every edit.
+function patternField(value, onChange) {
+  const ex = h("span", { class: "mono" });
+  const err = h("div", { style: "font-size:12.5px;color:var(--danger-text)" });
+  const changed = () => {
+    const e = badPattern(input.value), v = input.value.trim();
+    err.textContent = e;
+    ex.textContent = !v ? "DSCF0001.JPG (names kept)"
+      : v.replace(/\{name\}/gi, "DSCF0001").replace(/\{date\}/gi, "20261106").replace(/\{time\}/gi, "142530").replace(/[. ]+$/, "") + ".JPG";
+    onChange(input.value, !e);
+  };
+  const input = h("input", { type: "text", class: "mono", value, placeholder: "Empty keeps the names as they are", style: "width:100%", oninput: changed });
+  const add = (code, label) => h("button", { class: "small", onclick: () => {
+    const s = input.selectionStart ?? input.value.length, e = input.selectionEnd ?? s;
+    input.value = input.value.slice(0, s) + code + input.value.slice(e);
+    input.focus(); input.setSelectionRange(s + code.length, s + code.length);
+    changed();
+  } }, "+ " + label);
+  changed();
+  return h("div", { class: "stack", style: "gap:6px" }, input,
+    h("div", { class: "row", style: "gap:6px" }, add("{Name}", "Original name"), add("{Date}", "Date"), add("{Time}", "Time")),
+    h("div", { class: "faint", style: "font-size:12.5px" }, "Example: ", ex), err);
+}
+
+// nameList is the preview's File names box: the pattern used, and every name
+// that changes, old and new. "change" goes back to the settings.
+function nameList(p, change) {
+  const base = r => pathBase(String(r).replace(/\\/g, "/"));
+  const changes = p.items.filter(i => i.action === "copy" && i.dest && base(i.rel) !== base(i.dest));
+  const pat = patternOf(p.options);
+  let list = h("div", { class: "faint", style: "font-size:12.5px" }, "No file names change.");
+  if (changes.length) {
+    const t = vtable({ id: "names", height: Math.min(260, 40 + changes.length * 28), empty: "No names change",
+      columns: [{ label: "Now", tail: true, render: i => base(i.rel), sort: i => base(i.rel).toLowerCase() },
+        { label: "New name", tail: true, strong: true, render: i => base(i.dest), sort: i => base(i.dest).toLowerCase() }],
+      foot: r => `${plural(r.length, "name")} change` });
+    t.setRows(changes);
+    list = t.el;
+  }
+  return h("div", { class: "card stack", style: "margin-bottom:14px" },
+    h("div", {}, h("strong", {}, "File names"), h("span", { class: "muted" }, " · ", pat ? h("span", { class: "mono" }, pat) : "names kept", " · "),
+      h("a", { href: "#", onclick: e => { e.preventDefault(); change(); } }, "change")),
+    list);
+}
+
+// optionsForm edits {move, jpg, raw, mov, rename, pattern, sidecars} in
+// place, for a manual import or a profile.
+function optionsForm(o, profile = false) {
   const radio = (move, title) => {
     const box = h("div", { class: "opt" + (o.move === move ? " on" : "") },
       h("label", { class: "t" }, h("input", { type: "radio", name: "mode", checked: o.move === move, onchange: () => { o.move = move; redraw(); } }), " ", title),
@@ -324,7 +382,8 @@ function optionsForm(o) {
   return [
     h("div", { class: "lbl" }, "When sorting"), wrap,
     h("div", { class: "lbl" }, "Include"), h("div", { class: "row", style: "padding-top:6px;gap:18px" }, cb("jpg", "JPG (JPEG, HEIC)"), cb("raw", "RAW"), cb("mov", "MOV (all videos)")),
-    h("div", { class: "lbl" }, "File names"), h("div", { style: "padding-top:6px" }, cb("rename", "Add the capture date-time"), " ", h("span", { class: "mono faint" }, "FUJI0001-20261003-101500.RAF")),
+    h("div", { class: "lbl" }, "File name"), h("div", {}, patternField(patternOf(o), v => { o.rename = v.trim() !== ""; o.pattern = v.trim(); }),
+      profile ? h("div", { class: "faint", style: "font-size:12.5px;margin-top:4px" }, "The default for this profile. You can change it before each import.") : null),
     h("div", { class: "lbl" }, "Sidecars"), h("div", { style: "padding-top:6px" }, cb("sidecars", "Bring .xmp / .pp3 / .dop along, next to their photo (RAW first)")),
     h("div", { class: "lbl" }, "Speed"), h("div", {},
       h("select", { onchange: e => (o.parallel = Number(e.target.value)) },
@@ -347,7 +406,7 @@ function optionsForm(o) {
 function settingsLine(o, check = o.quickCheck ? "quick" : "disk") {
   if (o.tidy) return ["Rename in place", [o.jpg && "JPG", o.raw && "RAW", o.mov && "MOV"].filter(Boolean).join(", ") + " into month folders"].join(" · ");
   return [o.move ? "Move" : "Copy", [o.jpg && "JPG", o.raw && "RAW", o.mov && "MOV"].filter(Boolean).join(", "),
-    o.rename ? "date-time added to names" : "names kept", o.sidecars ? "sidecars included" : "no sidecars",
+    o.names === false ? null : o.rename ? "names " + patternOf(o) : "names kept", o.sidecars ? "sidecars included" : "no sidecars",
     o.parallel ? o.parallel + " at once" : "auto speed", check && (check === "quick" ? "quick check" : "disk check")].filter(Boolean).join(" · ");
 }
 
@@ -418,14 +477,14 @@ function pageJobs() {
     }
     list.replaceChildren(h("div", { class: "card jobs" }, js.slice().reverse().map(j => {
       const p = j.progress, c = p.counts || {};
-      const sorted = (c.copied || 0) + (c.moved || 0), verb = j.move ? "moved" : "copied";
+      const sorted = (c.copied || 0) + (c.moved || 0), verb = jobVerb(j)[1];
       let detail = "", pct = null, action = null;
       if (j.stage === "scanning") {
         detail = (p.phase || "Starting…") + (p.total ? ` · ${num(p.done)} of ${num(p.total)}` : "");
         pct = p.total ? 100 * p.done / p.total : 5;
         action = act("Cancel", () => api("POST", `/api/jobs/${j.id}/cancel`).catch(() => {}));
       } else if (j.stage === "review") {
-        detail = `${plural(j.toCopy, "file")} to ${j.move ? "move" : "copy"} · ${bytes(j.toCopyBytes)}`;
+        detail = `${plural(j.toCopy, "file")} to ${jobVerb(j)[2]} · ${bytes(j.toCopyBytes)}`;
         action = act("Discard", () => discardPlan(j.planId));
       } else if (j.stage === "sorting") {
         pct = jobPct(p);
@@ -533,7 +592,7 @@ async function pageImport(q) {
   }
   if (!here()) return;
   const o = profile
-    ? { sources: profile.source ? [profile.source] : [], dest: profile.dest }
+    ? { sources: profile.source ? [profile.source] : [], dest: profile.dest, rename: profile.rename, pattern: profile.pattern }
     : Object.assign({ jpg: true, raw: true, mov: true, rename: true, sidecars: true, move: false }, st.last, { sources: [...(st.last.sources || [])] });
   const err = h("div");
   const form = h("div", { class: "form" },
@@ -541,8 +600,10 @@ async function pageImport(q) {
     h("div", { class: "lbl" }, "Destination"),
     profile ? h("div", { class: "mono", style: "padding-top:6px" }, profile.dest) : folderField(o.dest, v => (o.dest = v), "Archive folder"),
     h("div", { class: "lbl" }, "Layout"), h("div", { class: "mono muted", style: "padding-top:6px" }, disp("<destination>/yyyymm/JPG | RAW | MOV")),
-    ...(profile ? [h("div", { class: "lbl" }, "Settings"), h("div", { style: "padding-top:6px" }, settingsLine(profile) + "  ",
-      h("a", { href: "#/profiles/" + profile.id }, "Edit profile"))] : optionsForm(o)));
+    ...(profile ? [
+      h("div", { class: "lbl" }, "File name"), patternField(patternOf(o), v => { o.rename = v.trim() !== ""; o.pattern = v.trim(); }),
+      h("div", { class: "lbl" }, "Settings"), h("div", { style: "padding-top:6px" }, settingsLine(Object.assign({}, profile, { names: false })) + "  ",
+        h("a", { href: "#/profiles/" + profile.id }, "Edit profile"))] : optionsForm(o)));
   setPage("new",
     h("h1", {}, profile ? profile.name : "Manual import"),
     h("p", { class: "sub" }, "Choose what to sort. The next step is a dry run: you'll see every folder and file before anything is written."),
@@ -554,7 +615,8 @@ async function pageImport(q) {
         err.replaceChildren();
         if (!o.sources.length) return err.replaceChildren(h("div", { class: "error", style: "margin-top:12px" }, "Add at least one source folder."));
         if (!o.dest) return err.replaceChildren(h("div", { class: "error", style: "margin-top:12px" }, "Choose a destination folder."));
-        if (profile) startScan({ profileId: profile.id, purpose: "import", options: { sources: o.sources } });
+        if (badPattern(o.pattern || "")) return err.replaceChildren(h("div", { class: "error", style: "margin-top:12px" }, badPattern(o.pattern)));
+        if (profile) startScan({ profileId: profile.id, purpose: "import", options: { sources: o.sources }, names: { rename: o.rename, pattern: o.pattern } });
         else startScan({ options: o, purpose: "import" });
       } }, "Scan and preview")));
 }
@@ -567,6 +629,7 @@ function pageRename() {
   let last = {};
   try { last = JSON.parse(localStorage.getItem("rename") || "{}"); } catch { /* none saved */ }
   const o = Object.assign({ dest: "", jpg: true, raw: true, mov: true }, last);
+  try { o.pattern = localStorage.getItem("renamePattern") ?? DEFAULT_PATTERN; } catch { o.pattern = DEFAULT_PATTERN; }
   const err = h("div");
   const cb = (key, label) => h("label", {}, h("input", { type: "checkbox", checked: !!o[key], onchange: e => (o[key] = e.target.checked) }), " ", label);
   setPage("rename",
@@ -574,31 +637,38 @@ function pageRename() {
     h("p", { class: "sub" }, "Tidy a folder in place: everything under it is sorted into month folders."),
     h("div", { class: "card" }, h("div", { class: "form" },
       h("div", { class: "lbl" }, "Parent folder"), folderField(o.dest, v => (o.dest = v), "The folder that holds the month folders"),
-      h("div", { class: "lbl" }, "Rename file type"), h("div", { class: "row", style: "padding-top:6px;gap:18px" }, cb("jpg", "JPG"), cb("raw", "RAW"), cb("mov", "MOV")))),
+      h("div", { class: "lbl" }, "Rename file type"), h("div", { class: "row", style: "padding-top:6px;gap:18px" }, cb("jpg", "JPG"), cb("raw", "RAW"), cb("mov", "MOV")),
+      h("div", { class: "lbl" }, "File name"), patternField(o.pattern, v => (o.pattern = v.trim())))),
     err,
     h("div", { class: "spread", style: "margin-top:14px" },
       h("span", { class: "faint" }, "Nothing changes until you approve the preview."),
       h("button", { class: "primary", onclick: () => {
         err.replaceChildren();
-        const msg = !o.dest.trim() ? "Choose a parent folder." : !(o.jpg || o.raw || o.mov) ? "Tick at least one file type." : "";
+        const msg = !o.dest.trim() ? "Choose a parent folder." : !(o.jpg || o.raw || o.mov) ? "Tick at least one file type." : badPattern(o.pattern);
         if (msg) return err.replaceChildren(h("div", { class: "error", style: "margin-top:12px" }, msg));
-        try { localStorage.setItem("rename", JSON.stringify(o)); } catch { /* storage blocked */ }
-        startScan({ purpose: "rename", options: { dest: o.dest.trim(), jpg: o.jpg, raw: o.raw, mov: o.mov } });
+        try {
+          localStorage.setItem("rename", JSON.stringify({ dest: o.dest, jpg: o.jpg, raw: o.raw, mov: o.mov }));
+          localStorage.setItem("renamePattern", o.pattern);
+        } catch { /* storage blocked */ }
+        startScan({ purpose: "rename", options: { dest: o.dest.trim(), jpg: o.jpg, raw: o.raw, mov: o.mov, rename: o.pattern !== "", pattern: o.pattern } });
       } }, "Scan →")));
 }
 
 // tidyTree draws a Rename preview tree: folders only, each with the number of
-// files directly in it. Months come first, then other folders; inside a month,
-// JPG, RAW, MOV. With colour, each folder directly under the parent is a
-// coloured row (months blue, anything else grey).
+// files in it and all its subfolders. Months come first, then other folders;
+// inside a month, JPG, RAW, MOV. With colour, each folder directly under the
+// parent is a coloured row (months blue, anything else grey).
 function tidyTree(dirs, rootName, colour) {
   const kids = {};
   let rootFiles = 0;
   for (const d of dirs) {
-    if (d.path === "") { rootFiles = d.files; continue; }
+    rootFiles += d.files;
+    if (d.path === "") continue;
     const i = d.path.lastIndexOf("/");
     (kids[i < 0 ? "" : d.path.slice(0, i)] ||= []).push(d);
   }
+  const total = {};
+  const sum = d => total[d.path] ??= d.files + (kids[d.path] || []).reduce((a, k) => a + sum(k), 0);
   const isMonth = n => /^\d{6}$/.test(n);
   const typeOrder = { jpg: "0", raw: "1", mov: "2" };
   const key = (n, top) => top ? (isMonth(n) ? "0" + n : "1" + n.toLowerCase()) : (typeOrder[n.toLowerCase()] || "3" + n.toLowerCase());
@@ -612,7 +682,7 @@ function tidyTree(dirs, rootName, colour) {
       const name = pathBase(d.path), last = i === list.length - 1;
       const cls = "tr" + (depth === 1 ? " top" + (colour ? (isMonth(name) ? " mon" : " oth") : "") : "");
       const lines = depth === 1 ? [] : [...guides.map(g => h("span", { class: "g" + (g ? " v" : "") })), h("span", { class: "g " + (last ? "l" : "t") })];
-      rows.push(h("div", { class: cls }, ...lines, h("span", { class: "nm" }, name), h("span", { class: "n" }, num(d.files))));
+      rows.push(h("div", { class: cls }, ...lines, h("span", { class: "nm" }, name), h("span", { class: "n" }, num(sum(d)))));
       walk(d.path, depth + 1, depth === 1 ? [] : [...guides, !last]);
     });
   };
@@ -633,6 +703,7 @@ function tidyPreview(p) {
     setPage("rename", h("h1", {}, "Nothing to rename"),
       h("p", { class: "sub mono" }, o.dest),
       h("p", { class: "sub" }, "Everything is already where it belongs. Nothing was changed."),
+      nameList(p, back),
       warn, h("div", { class: "trees one" }, h("div", {}, h("h4", {}, "Folders"), tidyTree(t.after, rootName, true))),
       h("div", { class: "sticky-foot row", style: "justify-content:flex-end" },
         h("button", { class: "primary", onclick: back }, "Done")));
@@ -646,6 +717,7 @@ function tidyPreview(p) {
   setPage("rename",
     h("div", { class: "spread" }, h("h1", {}, "Preview"), download),
     h("p", { class: "sub mono" }, o.dest),
+    nameList(p, back),
     h("div", { class: "metrics" },
       metric("Renamed", num(t.renamed)),
       metric("To another month", num(t.otherMonth)),
@@ -657,7 +729,7 @@ function tidyPreview(p) {
       h("div", {}, h("h4", {}, "Now"), tidyTree(t.before, rootName, false)),
       h("div", { class: "arrow" }, "→"),
       h("div", {}, h("h4", {}, "After"), tidyTree(t.after, rootName, true))),
-    h("p", { class: "faint", style: "font-size:12.5px" }, "Numbers are files directly in each folder."),
+    h("p", { class: "faint", style: "font-size:12.5px" }, "Numbers include files in subfolders."),
     h("div", { class: "sticky-foot spread" },
       h("button", { onclick: back }, "← Back"),
       approve));
@@ -867,6 +939,8 @@ async function pagePreview(id) {
         metric("No date (from metadata)", num(fallback.length), "dated from file name or file time"),
         metric("Ignored files", num(skipped.length), skipped.length ? Object.entries(skipped.reduce((a, i) => (a[i.reason] = (a[i.reason] || 0) + 1, a), {}))
           .map(([r, n]) => `${num(n)} ${reasonLabel[r].toLowerCase()}`).join(" · ") : "nothing left out"))),
+    h("div", { style: "height:14px" }),
+    nameList(p, back),
     h("h2", {}, "Folders"),
     h("div", { class: "card" }, h("div", { class: "faint", style: "font-size:12.5px;margin-bottom:6px" }, "Every month folder gets JPG, RAW and MOV. Click a folder to list its files."), tree),
     filesHead, chips, h("div", { style: "height:8px" }), tableBox,
@@ -900,6 +974,10 @@ function avgSpeed(s) {
   return t > 0.5 && s.copiedBytes ? bytes(s.copiedBytes / t) + "/s" : "";
 }
 
+// jobVerb gives the words for what a job does to each file: a Rename job
+// renames, an import moves or copies. [title, past tense, plain].
+const jobVerb = j => j.tidy ? ["Renaming", "renamed", "rename"] : j.move ? ["Moving", "moved", "move"] : ["Copying", "copied", "copy"];
+
 function metric(k, v, s) {
   return h("div", { class: "metric" }, h("div", { class: "k" }, k), h("div", { class: "v" }, v), s ? h("div", { class: "s" }, s) : null);
 }
@@ -925,7 +1003,7 @@ function pageRun(id) {
     try { j = await api("GET", "/api/jobs/" + id); } catch (e) { below.replaceChildren(errBox(e)); clearInterval(pollTimer); return; }
     const p = j.progress, c = p.counts || {};
     const sorting = j.stage === "sorting";
-    const verb = j.move ? "moved" : "copied";
+    const [ing, verb] = jobVerb(j);
     const sorted = (c.copied || 0) + (c.moved || 0), remaining = Math.max(0, p.total - p.done);
     const now = Date.now();
     if (sorting) samples.push([now, p.bytesDone]); else samples = [];
@@ -942,17 +1020,17 @@ function pageRun(id) {
     bar.parentElement.className = "bar" + (end ? " " + end : sorting ? "" : " paused");
     srcLine.textContent = sorting && p.sources > 1 ? `Source ${p.source + 1} of ${p.sources}: ${num(p.sourceDone)} of ${num(p.sourceTotal)} files` : "";
     const active = sorting ? (p.active || []) : [];
-    cur.replaceChildren(...(active.length ? [h("div", { class: "faint", style: "font-family:inherit" }, p.workers > 1 ? `${j.move ? "Moving" : "Copying"} ${num(active.length)} of up to ${num(p.workers)} files at once:` : (j.move ? "Moving:" : "Copying:")),
+    cur.replaceChildren(...(active.length ? [h("div", { class: "faint", style: "font-family:inherit" }, p.workers > 1 ? `${ing} ${num(active.length)} of up to ${num(p.workers)} files at once:` : ing + ":"),
       ...active.map(a => h("div", { style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" },
-        h("span", { class: "pill" + (a.checking ? " accent" : ""), style: "display:inline-block;min-width:68px;text-align:center;margin-right:8px;font-family:inherit" }, a.checking ? "checking" : j.move ? "moving" : "copying"), a.rel))] : []));
-    counts.replaceChildren(metric(j.move ? "Moved" : "Copied", num(sorted)), metric("Remaining", num(remaining)),
+        h("span", { class: "pill" + (a.checking ? " accent" : ""), style: "display:inline-block;min-width:68px;text-align:center;margin-right:8px;font-family:inherit" }, a.checking ? "checking" : ing.toLowerCase()), a.rel))] : []));
+    counts.replaceChildren(metric(verb[0].toUpperCase() + verb.slice(1), num(sorted)), metric("Remaining", num(remaining)),
       metric("Duplicates", num(c.duplicate || 0)), metric("Failed", num(c.failed || 0)));
     if (sorting) {
-      title.textContent = stopping ? "Stopping…" : j.move ? "Moving" : "Copying";
-      sub.textContent = stopping ? "Finishing the files in progress, then stopping." : (j.quickCheck ? "Each file is checked byte-for-byte." : "Each file is saved, then read back from the disk and compared.") + " You can leave this page; the job carries on.";
+      title.textContent = stopping ? "Stopping…" : ing;
+      sub.textContent = stopping ? "Finishing the files in progress, then stopping." : (j.tidy ? "Files are renamed and moved within the parent folder." : j.quickCheck ? "Each file is checked byte-for-byte." : "Each file is saved, then read back from the disk and compared.") + " You can leave this page; the job carries on.";
     } else if (j.stage === "stopped") {
       title.textContent = "Stopped";
-      sub.textContent = `${num(sorted)} of ${num(p.total)} files ${verb}. The other ${num(remaining)} are still in the source, untouched.`;
+      sub.textContent = `${num(sorted)} of ${num(p.total)} files ${verb}. The other ${num(remaining)} are still ${j.tidy ? "where they were" : "in the source"}, untouched.`;
     }
     if (shown === j.stage) return;
     shown = j.stage;
@@ -984,10 +1062,11 @@ async function showSummary(j, title, sub, btns, below) {
   const st = j.stage === "cancelled" || j.stage === "failed" || j.stage === "problems" ? j.stage : "done";
   title.textContent = { done: "Done", problems: "Finished with problems", failed: "Failed", cancelled: "Cancelled" }[st];
   const n = (s.copied || 0) + (s.moved || 0);
-  sub.replaceChildren(`${num(n)} files ${j.move ? "moved" : "copied"} (${bytes(s.bytes)})`,
+  const verb = jobVerb(j)[1];
+  sub.replaceChildren(`${num(n)} files ${verb} (${bytes(s.bytes)})`,
     avgSpeed(s) ? ` in ${duration(s)} · average ${avgSpeed(s)}` : "",
     s.check === "disk" && s.copiedBytes ? " · all read back from the disk and matched" : "",
-    s.notRun ? ` · ${num(s.notRun)} not ${j.move ? "moved" : "copied"}, still in the source` : "",
+    s.notRun ? ` · ${num(s.notRun)} not ${verb}, still ${j.tidy ? "where they were" : "in the source"}` : "",
     j.historyId ? h("span", {}, " · ", h("a", { href: "#/history/" + j.historyId }, "Details")) : "",
     j.profile === "Manual import" ? h("span", {}, " · ", h("a", { href: "#", onclick: async e => {
       e.preventDefault();
@@ -1016,7 +1095,7 @@ async function saveAsProfile(o) {
     [{ label: "Cancel", value: false }, { label: "Save", value: true, cls: "primary" }]);
   if (!v) return;
   try {
-    await api("POST", "/api/profiles", { name: name.value, dest: o.dest, move: o.move, jpg: o.jpg, raw: o.raw, mov: o.mov, rename: o.rename, sidecars: o.sidecars, parallel: o.parallel, quickCheck: o.quickCheck });
+    await api("POST", "/api/profiles", { name: name.value, dest: o.dest, move: o.move, jpg: o.jpg, raw: o.raw, mov: o.mov, rename: o.rename, pattern: o.pattern, sidecars: o.sidecars, parallel: o.parallel, quickCheck: o.quickCheck });
     toast("Profile saved");
   } catch (e) { toast(e.message, 6000); }
 }
@@ -1175,7 +1254,7 @@ async function pageProfile(id) {
     h("div", { class: "lbl" }, "Name"), h("input", { type: "text", value: p.name, placeholder: "fuji x-t50", oninput: e => (p.name = e.target.value) }),
     h("div", { class: "lbl" }, "To-sort folder"), h("div", {}, folderField(p.source, v => { p.source = v; clearTimeout(p._t); p._t = setTimeout(checkSource, 400); }, "/camera-photo/dumps-to-sort/fuji x-t50"), srcNote),
     h("div", { class: "lbl" }, "Destination"), h("div", {}, folderField(p.dest, v => (p.dest = v), "/camera-photo/fuji x-t50/Archive"), h("div", { class: "faint", style: "font-size:12.5px;margin-top:4px" }, "Created on the first approved sort if it doesn't exist.")),
-    ...optionsForm(p));
+    ...optionsForm(p, true));
   checkSource();
   const buttons = h("div", { class: "row", style: "justify-content:flex-end;margin-top:14px" });
   if (p.id) buttons.append(h("button", { onclick: async () => {

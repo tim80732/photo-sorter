@@ -67,9 +67,10 @@ Check ((Get-ChildItem -Recurse $dest -File).Count -eq $before) "dry run writes n
 $cr3 = Item $r '101A2290.CR3'
 Check ($cr3.dest -eq '202310/RAW/101A2290-20231001-180130.CR3') "CR3 -> 202310/RAW with date in name ($($cr3.dest))"
 Check ((Item $r 'DSCF9504.RAF').dest -like '202603/RAW/DSCF9504-20260328-164549.RAF') "RAF from EXIF"
-Check ((Item $r 'IMG_20250101_081151.HEIC').dest -eq '202501/JPG/IMG_20250101_081151.HEIC') "HEIC -> JPG, name already dated"
+# Only a name that fits the pattern is kept; a date already in a camera name doesn't count.
+Check ((Item $r 'IMG_20250101_081151.HEIC').dest -eq '202501/JPG/IMG_20250101_081151-20250101-081151.HEIC') "HEIC -> JPG, renamed by the pattern"
 $clip = Item $r 'A_0001C001A250130_125725EJ_CANON.MP4'
-Check ($clip.dateSrc -eq 'Canon clip name' -and $clip.dest -eq '202501/MOV/A_0001C001A250130_125725EJ_CANON.MP4') "Canon clip dated from its name"
+Check ($clip.dateSrc -eq 'Canon clip name' -and $clip.dest -eq '202501/MOV/A_0001C001A250130_125725EJ_CANON-20250130-125725.MP4') "Canon clip dated from its name"
 Check ((Item $r 'DSCF3113.MOV').dateSrc -eq 'Fujifilm metadata') "Fuji MOV dated from MVTG"
 $dng = Item $r 'DSCF8925-全景.dng'
 Check ($dng.dest -like '202603/RAW/DSCF8925-全景-20260322-092345.dng') "DNG with a Chinese name"

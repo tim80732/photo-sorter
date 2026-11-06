@@ -24,8 +24,11 @@ type Options struct {
 	JPG      bool     `json:"jpg"`
 	RAW      bool     `json:"raw"`
 	MOV      bool     `json:"mov"`
-	Rename   bool     `json:"rename"`   // add -yyyymmdd-HHMMSS to file names
+	Rename   bool     `json:"rename"`   // give files new names, built from Pattern
 	Sidecars bool     `json:"sidecars"` // bring .xmp/.pp3/.dop along with their photo
+	// Pattern is the new file name, e.g. "{Name}-{Date}-{Time}" (see
+	// pattern.go). Empty means DefaultPattern.
+	Pattern  string   `json:"pattern,omitempty"`
 	Parallel int      `json:"parallel"` // files copied at once; 0 = automatic
 	// QuickCheck compares each copy as the system still holds it in memory,
 	// instead of reading it back from the disk (the default).
@@ -225,38 +228,15 @@ func BuildPlan(ctx context.Context, opt Options, prog *Progress) (*Plan, error) 
 		}
 	}
 
-	// 2. Read capture dates (in parallel: most of the time is I/O latency).
+	// 2. Read capture dates.
 	var media []*Item
 	for _, it := range p.Items {
 		if it.Action == ActCopy {
 			media = append(media, it)
 		}
 	}
-	prog.phase("Reading capture dates", len(media))
-	work := make(chan *Item)
-	var wg sync.WaitGroup
-	for w := 0; w < 8; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for it := range work {
-				r := meta.Read(it.Src, it.date)
-				it.date, it.DateSrc, it.Fallback = r.Time, r.Source, r.Fallback
-				it.Date = r.Time.Format("2006-01-02 15:04:05")
-				prog.step(it.Rel)
-			}
-		}()
-	}
-	for _, it := range media {
-		if ctx.Err() != nil {
-			break
-		}
-		work <- it
-	}
-	close(work)
-	wg.Wait()
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
+	if err := readDates(ctx, media, prog); err != nil {
+		return nil, err
 	}
 
 	// 3. Decide names and find duplicates, in a stable order.
@@ -317,7 +297,7 @@ func BuildPlan(ctx context.Context, opt Options, prog *Progress) (*Plan, error) 
 			it.Action, it.Reason, it.Match = ActDup, ReasonDuplicate, m
 			continue
 		}
-		name := targetName(filepath.Base(it.Src), it.date, opt.Rename)
+		name := targetName(filepath.Base(it.Src), it.date, opt.namePattern())
 		final, clash := dir.unique(name)
 		it.Clash = clash
 		it.Dest = dir.rel + "/" + final
@@ -332,19 +312,33 @@ func BuildPlan(ctx context.Context, opt Options, prog *Progress) (*Plan, error) 
 	return p, nil
 }
 
-// targetName adds the capture date-time unless the name already contains it
-// (for example files sorted before, or 20231001_180130_101A2290.CR3).
-func targetName(base string, d time.Time, rename bool) string {
-	if !rename {
-		return base
+// readDates fills in the capture date of each file (in parallel: most of the
+// time is I/O latency).
+func readDates(ctx context.Context, todo []*Item, prog *Progress) error {
+	prog.phase("Reading capture dates", len(todo))
+	work := make(chan *Item)
+	var wg sync.WaitGroup
+	for w := 0; w < 8; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for it := range work {
+				r := meta.Read(it.Src, it.date)
+				it.date, it.DateSrc, it.Fallback = r.Time, r.Source, r.Fallback
+				it.Date = r.Time.Format("2006-01-02 15:04:05")
+				prog.step(it.Rel)
+			}
+		}()
 	}
-	ext := filepath.Ext(base)
-	stem := strings.TrimSuffix(base, ext)
-	if strings.Contains(stem, d.Format("20060102")) && strings.Contains(stem, d.Format("150405")) ||
-		strings.Contains(stem, d.Format("060102_150405")) { // Canon clips: A_0001C001A250130_125725
-		return base
+	for _, it := range todo {
+		if ctx.Err() != nil {
+			break
+		}
+		work <- it
 	}
-	return stem + "-" + d.Format("20060102-150405") + ext
+	close(work)
+	wg.Wait()
+	return ctx.Err()
 }
 
 func attachSidecars(p *Plan, sidecars []*Item, ix *destIndex, opt Options) {

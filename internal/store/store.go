@@ -25,6 +25,7 @@ type Profile struct {
 	RAW        bool   `json:"raw"`
 	MOV        bool   `json:"mov"`
 	Rename     bool   `json:"rename"`
+	Pattern    string `json:"pattern,omitempty"` // new file name; empty = sorter.DefaultPattern
 	Sidecars   bool   `json:"sidecars"`
 	Parallel   int    `json:"parallel"`   // files copied at once; 0 = automatic
 	QuickCheck bool   `json:"quickCheck"` // check copies in memory, not read back from the disk
@@ -32,7 +33,7 @@ type Profile struct {
 
 // Options turns a profile into import options for the given sources.
 func (p Profile) Options(sources []string) sorter.Options {
-	return sorter.Options{Sources: sources, Dest: p.Dest, Move: p.Move, JPG: p.JPG, RAW: p.RAW, MOV: p.MOV, Rename: p.Rename, Sidecars: p.Sidecars, Parallel: p.Parallel, QuickCheck: p.QuickCheck}
+	return sorter.Options{Sources: sources, Dest: p.Dest, Move: p.Move, JPG: p.JPG, RAW: p.RAW, MOV: p.MOV, Rename: p.Rename, Pattern: p.Pattern, Sidecars: p.Sidecars, Parallel: p.Parallel, QuickCheck: p.QuickCheck}
 }
 
 // Settings remembers the last manual import.

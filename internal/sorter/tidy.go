@@ -10,10 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
-
-	"photosorter/internal/meta"
 )
 
 // Rename ("tidy") sorts a folder that is already an archive, in place:
@@ -67,7 +64,7 @@ func buildTidyPlan(ctx context.Context, opt Options, prog *Progress) (*Plan, err
 		return nil, fmt.Errorf("folder not found: %s", opt.Dest)
 	}
 	opt.Dest, opt.Sources = root, []string{root}
-	opt.Move, opt.Rename, opt.Sidecars = true, true, true
+	opt.Move, opt.Sidecars = true, true
 	p := &Plan{ID: newID(), Created: time.Now(), Options: opt}
 	add := func(it *Item) { it.ID = len(p.Items); p.Items = append(p.Items, it) }
 
@@ -151,31 +148,8 @@ func buildTidyPlan(ctx context.Context, opt Options, prog *Progress) (*Plan, err
 			unticked[it.Cat]++
 		}
 	}
-	prog.phase("Reading capture dates", len(media))
-	work := make(chan *Item)
-	var wg sync.WaitGroup
-	for w := 0; w < 8; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for it := range work {
-				r := meta.Read(it.Src, it.date)
-				it.date, it.DateSrc, it.Fallback = r.Time, r.Source, r.Fallback
-				it.Date = r.Time.Format("2006-01-02 15:04:05")
-				prog.step(it.Rel)
-			}
-		}()
-	}
-	for _, it := range media {
-		if ctx.Err() != nil {
-			break
-		}
-		work <- it
-	}
-	close(work)
-	wg.Wait()
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
+	if err := readDates(ctx, media, prog); err != nil {
+		return nil, err
 	}
 
 	// 3. Where each file belongs.
@@ -193,7 +167,7 @@ func buildTidyPlan(ctx context.Context, opt Options, prog *Progress) (*Plan, err
 		var dir, name string
 		if opt.includes(it.Cat) {
 			dir = t.dirName(it.date.Format("200601") + "/" + string(it.Cat))
-			name = targetName(pathBase(it.Rel), it.date, true)
+			name = targetName(pathBase(it.Rel), it.date, opt.namePattern())
 		} else {
 			dir, name = t.dirName(string(it.Cat)), pathBase(it.Rel)
 		}
