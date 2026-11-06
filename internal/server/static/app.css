@@ -3,7 +3,7 @@
   --border: rgba(0,0,0,.12); --border-strong: rgba(0,0,0,.22);
   --accent: #2f6fdc; --accent-hover: #255fc2; --on-accent: #fff; --accent-bg: #e6effc; --accent-text: #1d4f9e;
   --danger: #c93a39; --danger-hover: #ad2f2e; --danger-bg: #fcebeb; --danger-text: #8f2525;
-  --ok-bg: #e6f3dc; --ok-text: #2f5d10; --warn-bg: #faefd9; --warn-text: #7a4a07;
+  --ok: #3b8a1e; --ok-bg: #e6f3dc; --ok-text: #2f5d10; --warn-bg: #faefd9; --warn-text: #7a4a07;
   --radius: 8px; --row: 30px;
   font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; color-scheme: light;
 }
@@ -13,7 +13,7 @@
     --border: rgba(255,255,255,.12); --border-strong: rgba(255,255,255,.24);
     --accent: #4a86ea; --accent-hover: #5c94f0; --accent-bg: #1f3355; --accent-text: #b5d0f8;
     --danger: #d44a49; --danger-hover: #e05a59; --danger-bg: #4a1f1f; --danger-text: #f3baba;
-    --ok-bg: #26391a; --ok-text: #bfe0a0; --warn-bg: #45320f; --warn-text: #f3d08f;
+    --ok: #5fae3a; --ok-bg: #26391a; --ok-text: #bfe0a0; --warn-bg: #45320f; --warn-text: #f3d08f;
     color-scheme: dark;
   }
 }
@@ -183,7 +183,8 @@ label { cursor: pointer; }
 .bar > div { height: 100%; background: var(--accent); transition: width .3s; }
 .bar.paused > div { background: var(--faint); }
 .bar.warn > div { background: var(--warn-text); }
-.bar.full > div { background: var(--danger); }
+.bar.full > div, .bar.bad > div { background: var(--danger); }
+.bar.ok > div { background: var(--ok); }
 .warn-text { color: var(--warn-text); }
 /* action bar: pinned to the bottom of the window, spanning the content area */
 .sticky-foot { position: sticky; bottom: 0; z-index: 2; margin: 18px calc(-1 * var(--main-x)) 0; padding: 12px var(--main-x) 14px;

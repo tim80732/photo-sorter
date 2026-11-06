@@ -938,7 +938,8 @@ function pageRun(id) {
     line.replaceChildren(h("span", {}, `${Math.floor(100 * pct)}% · ${num(p.done)} of ${num(p.total)} files · ${bytes(p.bytesDone)} of ${bytes(p.bytesTotal)}`),
       sorting ? h("span", {}, h("b", {}, speed == null ? "" : bytes(speed) + "/s"), h("span", { class: "muted" }, leftText ? "  ·  " + leftText : "")) : h("span"));
     bar.style.width = 100 * pct + "%";
-    bar.parentElement.classList.toggle("paused", !sorting);
+    const end = { done: "ok", problems: "warn", failed: "bad" }[j.stage];
+    bar.parentElement.className = "bar" + (end ? " " + end : sorting ? "" : " paused");
     srcLine.textContent = sorting && p.sources > 1 ? `Source ${p.source + 1} of ${p.sources}: ${num(p.sourceDone)} of ${num(p.sourceTotal)} files` : "";
     const active = sorting ? (p.active || []) : [];
     cur.replaceChildren(...(active.length ? [h("div", { class: "faint", style: "font-family:inherit" }, p.workers > 1 ? `${j.move ? "Moving" : "Copying"} ${num(active.length)} of up to ${num(p.workers)} files at once:` : (j.move ? "Moving:" : "Copying:")),
