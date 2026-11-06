@@ -4,6 +4,12 @@ What changed in each release. Downloads are on the
 [Releases page](https://github.com/tim80732/photo-sorter/releases); the Docker
 image is `ghcr.io/tim80732/photo-sorter`.
 
+## 1.3.1 — 2026-11-06
+
+### Changed
+- The progress bar shows how a sort ended: green when done, amber when it
+  finished with problems, red when it failed. A cancelled sort stays grey.
+
 ## 1.3.0 — 2026-11-06
 
 ### Added
